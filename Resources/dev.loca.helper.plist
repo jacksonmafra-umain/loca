@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.loca.helper</string>
+
+	<!-- Relative to the app bundle. SMAppService resolves it, which is what
+	     keeps the helper inside the signed bundle instead of copied into
+	     /Library/PrivilegedHelperTools. -->
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/LocaHelper</string>
+
+	<key>MachServices</key>
+	<dict>
+		<key>dev.loca.helper</key>
+		<true/>
+	</dict>
+
+	<!-- Required by SMAppService: it ties this daemon to the app allowed to
+	     manage it, and is what makes the daemon appear under Login Items. -->
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>dev.loca</string>
+	</array>
+
+	<key>KeepAlive</key>
+	<true/>
+
+	<key>StandardOutPath</key>
+	<string>/var/log/dev.loca.helper.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/log/dev.loca.helper.log</string>
+</dict>
+</plist>

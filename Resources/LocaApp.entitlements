@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Deliberately near-empty. The app is NOT sandboxed: it runs lsof and
+	     launchctl and reads /var/run/docker.sock, none of which survive the
+	     App Sandbox. There is no entitlement for registering a daemon —
+	     SMAppService only requires that the app be signed and that the daemon
+	     plist name the bundle in AssociatedBundleIdentifiers. -->
+	<key>com.apple.security.get-task-allow</key>
+	<true/>
+</dict>
+</plist>

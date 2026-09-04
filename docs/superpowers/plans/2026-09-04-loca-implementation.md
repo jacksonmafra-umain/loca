@@ -896,20 +896,13 @@ codesign --force --options runtime --timestamp=none \
 - Consumes: `locaHelperMachServiceName`, `LocaHelperProtocol`, `DomainPayload` (Task 0.17).
 - Produces: `final class XPCListener: NSObject, NSXPCListenerDelegate`, `final class HelperService: NSObject, LocaHelperProtocol`.
 
-The listener rejects any connection whose code signature does not satisfy the requirement, before exporting the object. This is the whole reason the helper can be trusted:
+Use `NSXPCConnection.setCodeSigningRequirement(_:)`, public since macOS 13. Do **not** read the audit token by hand: that needs KVC on a private property, and a pid-based alternative has a window in which the pid could be reused between the check and the call that trusts it.
 
 ```swift
-private let requirement = """
-identifier "dev.loca" and anchor apple generic \
-and certificate leaf[subject.OU] = "6L9VF66ZX7"
-"""
-
 func listener(_ listener: NSXPCListener,
               shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-    guard verifyCodeSignature(auditToken: connection.auditToken) else {
-        NSLog("loca: rejected connection from pid %d", connection.processIdentifier)
-        return false
-    }
+    guard let requirement else { return false }   // fail closed
+    connection.setCodeSigningRequirement(requirement)
     connection.exportedInterface = NSXPCInterface(with: LocaHelperProtocol.self)
     connection.exportedObject = service
     connection.resume()
@@ -917,13 +910,36 @@ func listener(_ listener: NSXPCListener,
 }
 ```
 
-`verifyCodeSignature` builds a `SecCode` from the audit token via `SecCodeCopyGuestWithAttributes` with `kSecGuestAttributeAudit`, then calls `SecCodeCheckValidity` against `SecRequirementCreateWithString(requirement)`. Reading `connection.auditToken` needs a small `@objc` shim, since the property is not exposed in Swift; declare it in a private extension using `value(forKey:)`-free direct KVC on the private selector `auditToken`, guarded so a nil result denies the connection.
+The call returns nothing. Enforcement is the system's: it invalidates the connection before any message reaches the exported object, so a client that does not match never gets to call a method even though this returned `true`.
+
+The requirement is derived from the helper's *own* signature — "signed by whoever signed me" — rather than hardcoded. That is both the exact property wanted and the only form that lets a third party build this repository without editing a team identifier into the source. Read it with `SecCodeCopySelf`, `SecCodeCopyStaticCode`, and `SecCodeCopySigningInformation`, then take `kSecCodeInfoTeamIdentifier`:
+
+```
+identifier "dev.loca" and anchor apple generic and certificate leaf[subject.OU] = "<own team>"
+```
+
+Two traps. The team identifier is the certificate's **OU** field, *not* the value in parentheses in an `Apple Development: name (XXXXXXXXXX)` common name — on this machine those are `9N8ZC32DMP` and `6L9VF66ZX7` respectively, and the wrong one produces a requirement that silently never matches. And because the setter reports nothing back, compile the requirement string with `SecRequirementCreateWithString` at startup, so a typo becomes a log line rather than a daemon that refuses everyone for no visible reason. No team identifier at all — an unsigned or ad-hoc build — must refuse every connection: a root daemon that cannot tell who is calling has no business accepting anyone.
 
 - [ ] **Step 1: Write `XPCListener.swift` and a `HelperService` that implements only `helperVersion` and `diagnostics`**
 - [ ] **Step 2: Wire `main.swift`** — create the listener, `resume()`, then `RunLoop.main.run()`. Handle `SIGTERM` by tearing down and exiting 0.
-- [ ] **Step 3: Build** — `make app`. Expected: success.
-- [ ] **Step 4: Manual verification (yours, requires authentication)** — from the app's onboarding placeholder, register the daemon; then `sudo launchctl print system/dev.loca.helper | head -20` shows the service loaded, and `log show --predicate 'process == "LocaHelper"' --last 2m` shows no rejection for our own app.
-- [ ] **Step 5: Commit** — `feat: accept only code-signature-verified XPC clients in the helper`
+- [ ] **Step 3: Add command-line flags to the app binary** — `--register-helper`, `--unregister-helper`, `--helper-status`, `--bundle-info`, `--install-resolver`, `--remove-resolver`, `--diagnostics`, handled in `App.init()`.
+
+`SMAppService` only registers a daemon when called from inside the signed bundle, so registration has to go through the app binary. Flags make install, uninstall, and every verification in this milestone a shell command rather than a button to click. Note that `CommandLineMode` runs before the main run loop, so the async `HelperClient` cannot be used there — awaiting on the main actor from a blocked main thread deadlocks. It needs its own blocking XPC path over a semaphore.
+
+- [ ] **Step 4: Register the helper** — `/Applications/Loca.app/Contents/MacOS/LocaApp --register-helper`
+
+Three things about registration that are not obvious:
+
+- The app has to be in `/Applications` and the daemon must be approved once by the user in System Settings > General > Login Items. Until then `status` is `requiresApproval`.
+- `register()` **throws** `"Operation not permitted"` on that normal not-yet-approved path — launchd refuses to bootstrap a disallowed job. Check the status afterwards and report an error only when the status did not move, or a working install looks like a failure.
+- On macOS 26, `status` before any registration is `.notFound`, not `.notRegistered`. `.notFound` also means "plist missing or invalid", so it is three conditions wearing one name — which is what `--bundle-info` exists to separate.
+
+- [ ] **Step 5: Verify it is running** — `pgrep -fl LocaHelper` shows a process, and `/var/log/dev.loca.helper.log` ends with `helper listening on dev.loca.helper`.
+
+After changing helper code, launchd keeps the old binary alive under `KeepAlive`. `--unregister-helper` then `--register-helper` reloads it; the register can fail transiently right after the unregister, so retry once.
+
+- [ ] **Step 6: Verify the client gate accepts our own app** — `--diagnostics` returns a report. An unsigned client's rejection is in the manual list at the end of this plan.
+- [ ] **Step 7: Commit** — `feat: accept only code-signature-verified XPC clients in the helper`
 
 ### Task 1.3: DNS listener on `127.0.0.1:53531`
 
@@ -935,9 +951,14 @@ func listener(_ listener: NSXPCListener,
 - Consumes: `DNSCodec`, `DNSResponder`, `Paths.dnsPort` (Tasks 0.14, 0.15).
 - Produces: `final class DNSListener { init(port: UInt16); func start() throws; func stop() }`.
 
-Two `NWListener`s on `127.0.0.1:53531`, one UDP and one TCP. UDP handles one datagram per connection; TCP reads the 2-byte length prefix, then the payload, then replies with a prefixed response and keeps the connection open for a second query. Both paths run the bytes through `DNSCodec.decode`, `DNSResponder.respond`, `DNSCodec.encode`. A decode failure is logged and dropped, never crashed on — a malformed packet from any local process must not take down a root daemon.
+Two `NWListener`s on loopback port 53531, one UDP and one TCP. UDP handles one datagram per connection; TCP reads the 2-byte length prefix, then the payload, then replies with a prefixed response and keeps the connection open for a second query. Both paths run the bytes through `DNSCodec.decode`, `DNSResponder.respond`, `DNSCodec.encode`. A decode failure is logged and dropped, never crashed on — a malformed packet from any local process must not take down a root daemon.
 
-Sleep and wake: observe `NWListener.stateUpdateHandler`; on `.failed` or `.cancelled`, re-arm after a 1-second delay with exponential backoff capped at 30 seconds. This is what the spec means by "the DNS listener re-armed after sleep and wake".
+Two mistakes here fail in ways that read as success, so they are worth stating outright:
+
+1. **Pass the port to the initializer:** `NWListener(using: parameters, on: port)`. Setting `parameters.requiredLocalEndpoint` does *not* bind a listener's port — the listener comes up on an ephemeral port while every log line still reports the port that was asked for. Restrict the interface with `parameters.requiredInterfaceType = .loopback`, and log `listener.port`, never the requested value, so a listener can never claim a port it is not on.
+2. **Do not cancel a UDP flow right after sending.** `send(completion: .idempotent)` is asynchronous, and cancelling immediately drops the reply. Cancel inside a `.contentProcessed` completion instead. Skipping this produces the most misleading failure available: the listener reports ready, `dig +tcp` answers correctly, and plain UDP queries time out.
+
+Sleep and wake: observe `NWListener.stateUpdateHandler`; on `.failed`, or on a `.cancelled` that `stop()` did not ask for, re-arm after a 1-second delay with exponential backoff capped at 30 seconds. This is what the spec means by "the DNS listener re-armed after sleep and wake".
 
 - [ ] **Step 1: Write `DNSListener.swift`**
 - [ ] **Step 2: Start it from `main.swift` before the run loop**
@@ -954,26 +975,49 @@ Sleep and wake: observe `NWListener.stateUpdateHandler`; on `.failed` or `.cance
 - Create: `Sources/LocaHelper/ResolverInstaller.swift`
 - Modify: `Sources/LocaHelper/HelperService.swift`
 
+**Files (revised):**
+- Create: `Sources/LocaCore/ResolverInstaller.swift`, `Tests/LocaCoreTests/ResolverInstallerTests.swift`
+- Create: `Sources/LocaHelper/ResolverInstaller.swift` — a thin `SystemResolver` binding to the real path
+- Modify: `Sources/LocaHelper/HelperService.swift`
+
 **Interfaces:**
-- Consumes: `ResolverFile`, `Paths.resolverFile` (Task 0.16).
+- Consumes: `ResolverFile`, `Paths.resolverDirectory` (Task 0.16).
 - Produces:
 
 ```swift
-enum ResolverInstaller {
-    static func install() throws -> String?   // returns the backup path when one was made
-    static func remove() throws
-    static func status() -> (exists: Bool, managedByLoca: Bool, content: String?)
+public struct ResolverInstaller: Sendable {
+    public init(directory: URL = Paths.resolverDirectory, fileName: String = "test")
+    public var file: URL { get }
+    public struct Status: Equatable, Sendable {
+        public var exists: Bool
+        public var managedByLoca: Bool
+        public var content: String?
+        public var backups: [String]
+    }
+    @discardableResult
+    public func install(port: UInt16 = Paths.dnsPort, now: Date = Date()) throws -> String?
+    public func remove() throws
+    public func status() -> Status
+}
+
+public enum ResolverInstallerError: Error, Equatable, Sendable {
+    case notManagedByLoca(String)
 }
 ```
 
-`install` creates `/etc/resolver` with mode `0755` when absent. When `/etc/resolver/test` already exists and is not ours, it is copied to `/etc/resolver/test.loca-backup-<ISO8601>` and the path is returned so the app can report it. A file that is already ours is rewritten in place, no backup. `remove` only unlinks a file the marker proves is ours, and restores the most recent backup if one exists.
+This belongs in `LocaCore` with the directory as a parameter, not in the helper against a hardcoded `/etc/resolver`. The ownership rule is one branch, and getting it wrong destroys someone's existing dnsmasq configuration in a way they discover days later — so it has to be testable without root.
 
-- [ ] **Step 1: Write `ResolverInstaller.swift` and wire `installDNSResolver` / `removeDNSResolver` in `HelperService`**
-- [ ] **Step 2: Build and reinstall** — `make app && make reinstall-helper`
-- [ ] **Step 3: Verify a hand-written file is backed up, not clobbered** — write `nameserver 9.9.9.9` to `/etc/resolver/test` with `sudo`, trigger install, then `ls /etc/resolver/` shows a `test.loca-backup-*` file and `cat /etc/resolver/test` shows our marker.
-- [ ] **Step 4: Verify macOS picked it up** — `scutil --dns | grep -A3 'domain.*test'`. Expected: `nameserver[0] : 127.0.0.1`, `port : 53531`.
-- [ ] **Step 5: Verify end to end without an explicit server** — `dscacheutil -q host -a name whatever.projeto1.test`. Expected: `ip_address: 127.0.0.1`.
-- [ ] **Step 6: Commit** — `feat: install and remove /etc/resolver/test, backing up a foreign file`
+`install` creates the directory with mode `0755` when absent. A file the marker does not claim is copied to `<directory>/test.loca-backup-<timestamp>` and the path returned so the app can report it; a file that is already ours is rewritten in place with no backup, since piling up copies of something reproducible is just clutter. The written file is `0644`. `remove` unlinks only a file the marker proves is ours — anything else throws `.notManagedByLoca` — then restores the most recent backup. Uninstall undoes what Loca did, never what it found.
+
+The timestamp must be fixed-width and colon-free (`yyyy-MM-dd'T'HHmmss'Z'`, UTC, POSIX locale), because the most recent backup is picked by lexical order.
+
+- [ ] **Step 1: Write `ResolverInstaller.swift` in `LocaCore` and its tests** — cover: a foreign file is backed up and preserved; our own is rewritten with no backup; `remove` refuses a file it does not own and leaves it intact; `remove` restores the most recent backup; `remove` on an absent file is harmless; the file is `0644`; timestamps sort chronologically.
+- [ ] **Step 2: Add the `SystemResolver` binding and wire `installDNSResolver` / `removeDNSResolver` in `HelperService`**
+- [ ] **Step 3: Reload the helper** — `make app`, `ditto build/Loca.app /Applications/Loca.app`, then `--unregister-helper` and `--register-helper`.
+- [ ] **Step 4: Install the resolver** — `--install-resolver`. Expected: `installed /etc/resolver/test`, and `cat /etc/resolver/test` shows the marker, `nameserver 127.0.0.1`, and `port 53531` at mode 644.
+- [ ] **Step 5: Verify macOS picked it up** — `scutil --dns`. Expected: a resolver entry with `domain : test`, `nameserver[0] : 127.0.0.1`, `port : 53531`.
+- [ ] **Step 6: Verify end to end without an explicit server** — `dscacheutil -q host -a name whatever.projeto1.test`. Expected: `ip_address: 127.0.0.1` and `ipv6_address: ::1`. Also `ping -c 1 deep.sub.anything.test`, which must resolve to `127.0.0.1` — that is wildcard resolution at arbitrary depth, for free.
+- [ ] **Step 7: Commit** — `feat: install and remove /etc/resolver/test, backing up a foreign file`
 
 ### Task 1.5: Port probe and diagnostics
 
@@ -982,14 +1026,16 @@ enum ResolverInstaller {
 - Modify: `Sources/LocaHelper/HelperService.swift`
 
 **Interfaces:**
-- Consumes: `LsofParser` (Task 0.11).
-- Produces: `enum PortProbe { static func owner(ofPort port: Int) -> ListeningPort? }`, and a `diagnostics` reply carrying `helperVersion`, `dnsListening`, `resolverInstalled`, `port80Owner`, `port443Owner`, `caddyRunning`, `caTrusted`.
+- Consumes: `LsofParser`, `LsofParser.arguments` (Task 0.11).
+- Produces: `enum PortProbe { static func owner(ofPort:) -> ListeningPort?; static func describeOwner(ofPort:) -> String? }`, a small `enum Shell`, and a `diagnostics` reply carrying `helperVersion`, `helperBuild`, `dnsPort`, `dnsListening`, `resolverExists`, `resolverManagedByLoca`, and — only when the port is actually held — `port80Owner` and `port443Owner`.
 
-`PortProbe` runs `lsof -nP -iTCP:<port> -sTCP:LISTEN` and feeds the output to `LsofParser`. The spec is blunt about why this matters: a silent failure on an already-bound 443 costs an afternoon, so the helper reports the owning process by name rather than a generic bind error.
+`PortProbe` runs `/usr/sbin/lsof +c 0 -nP -iTCP:<port> -sTCP:LISTEN` (absolute path: the helper's `PATH` is launchd's, not a shell's) and feeds the output to `LsofParser`. It reports `"<command> (pid <n>)"`, not a boolean: "something is on 443" sends the user hunting, while "nginx (pid 812) is on 443" ends the search.
+
+`Shell` must read both pipes *before* `waitUntilExit`. `lsof` on a busy machine produces enough output to fill a pipe buffer, and a child blocked on a full pipe against a parent sitting in `waitUntilExit` hangs forever.
 
 - [ ] **Step 1: Write `PortProbe.swift` and fill in `diagnostics`**
-- [ ] **Step 2: Build and reinstall**
-- [ ] **Step 3: Verify** — start `python3 -m http.server 443` under `sudo`, then read diagnostics from the app placeholder and confirm `port443Owner` names `Python`. Stop the server.
+- [ ] **Step 2: Reload the helper and read the report** — `--diagnostics`. Expected: `dnsListening: 1` (which also proves the `lsof` path works against a real socket, as root), `resolverExists: 1`, `resolverManagedByLoca: 1`, and no `port80Owner`/`port443Owner` keys while those ports are free.
+- [ ] **Step 3: Verify an occupied port is named** — requires root to bind 443, so it belongs in the manual list: `sudo python3 -m http.server 443`, then `--diagnostics` must show `port443Owner: Python (pid …)`. Stop the server afterwards.
 - [ ] **Step 4: Commit** — `feat: report which process holds :80 and :443 in helper diagnostics`
 
 ### Task 1.6: Close out milestone 1
@@ -1467,7 +1513,10 @@ These come straight from the spec's "out of scope" and "failure modes" sections.
 Recorded here so it is run deliberately at the end, not assumed:
 
 - An XPC client that is unsigned, or signed by another team, is rejected. Build a tiny throwaway client, sign it ad-hoc, connect to `dev.loca.helper`, and confirm the connection is refused and the helper logs the rejection.
-- `dig @127.0.0.1 -p 53531 anything.projeto1.test` answers `127.0.0.1`.
+- A port already held is named in diagnostics: `sudo python3 -m http.server 443`, then `--diagnostics` shows `port443Owner: Python (pid …)`.
+- A hand-written `/etc/resolver/test` is backed up rather than overwritten on the real `/etc`: `sudo tee /etc/resolver/test <<< "nameserver 9.9.9.9"`, then `--install-resolver`, then `ls /etc/resolver/` shows a `test.loca-backup-*` file. (The logic itself is covered by `ResolverInstallerTests` against a temporary directory; this only confirms the real path.)
 - `curl -sI https://projeto1.test` returns a response over a trusted certificate.
 - The DNS listener still answers after a sleep and wake cycle.
 - Caddy is restarted with backoff after `sudo pkill -f 'caddy run'`.
+
+Already verified in this session, against the running daemon: `dig` answers `127.0.0.1` for A and `::1` for AAAA over both UDP and TCP, `MX` comes back `NOERROR` with zero answers, `scutil --dns` lists the `test` domain on `127.0.0.1:53531`, and `ping deep.sub.anything.test` resolves without an explicit server.
