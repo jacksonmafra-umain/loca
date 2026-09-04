@@ -23,7 +23,6 @@ final class HelperClient {
     private(set) var helperBuild: String?
     private(set) var lastError: String?
 
-    private let daemon = SMAppService.daemon(plistName: "\(Paths.helperLabel).plist")
     private var connection: NSXPCConnection?
 
     // MARK: - Registration
@@ -32,7 +31,7 @@ final class HelperClient {
         lastError = nil
         let thrown: (any Error)?
         do {
-            try daemon.register()
+            try DaemonRegistration.register()
             thrown = nil
         } catch {
             thrown = error
@@ -52,7 +51,7 @@ final class HelperClient {
     func unregister() async {
         lastError = nil
         do {
-            try await daemon.unregister()
+            try await DaemonRegistration.unregister()
         } catch {
             lastError = "could not unregister the helper: \(error.localizedDescription)"
         }
@@ -63,11 +62,11 @@ final class HelperClient {
     /// Opens the Login Items pane, the only place a registered daemon can be
     /// approved.
     func openLoginItemsSettings() {
-        SMAppService.openSystemSettingsLoginItems()
+        DaemonRegistration.openLoginItemsSettings()
     }
 
     private func refreshRegistrationState() {
-        switch daemon.status {
+        switch DaemonRegistration.status {
         case .notRegistered: state = .notInstalled
         case .requiresApproval: state = .requiresApproval
         case .enabled: state = .installed

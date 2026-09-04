@@ -19,10 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Loca bundles the Caddy web server (https://caddyserver.com), which is licensed
-under the Apache License 2.0. The binary is downloaded at build time and is not
-included in this repository. See https://github.com/caddyserver/caddy for its
-licence terms.
