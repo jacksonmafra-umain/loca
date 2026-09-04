@@ -1318,11 +1318,24 @@ Command mapping, exactly as the spec lays out:
 - `stop` runs `launchctl bootout gui/$UID/dev.loca.run.<slug>`, which tears down the whole process group. This is the difference between stopping a server and leaving an orphan holding the port.
 - `status` runs `launchctl print gui/$UID/dev.loca.run.<slug>` and parses it with `LaunchctlStatusParser`.
 
-`refreshAll` polls every 3 seconds while the window is visible, feeds each observed pid change into that project's `RestartTracker`, and adds the project to `unstable` once the tracker trips.
+`refreshAll` polls every 3 seconds while the window is visible, feeds each observed pid change into that project's `RestartTracker`, and adds the project to `unstable` once the tracker trips. A pid *change* is the signal, because `launchctl` reports no restart count worth keying on.
 
-- [ ] **Step 1: Write `RunnerController.swift`**
-- [ ] **Step 2: Build** — `make app`
-- [ ] **Step 3: Commit** — `feat: drive per-project launchd agents from the app`
+Split the mechanics out into a non-isolated `RunnerAgent`, the way `SystemResolver` is split from `ResolverInstaller`. The controller is `@MainActor` and exists to drive a UI, but the same `launchctl` calls are needed from the command line, which runs before the main actor has an executor.
+
+**macOS will not let an agent work in a protected folder.** `~/Downloads`, `~/Documents`, `~/Desktop`, and iCloud Drive are guarded by TCC, and a `launchd` agent has no window to show a consent prompt in — so it is never asked and never granted. It cannot even resolve its own working directory there:
+
+```
+shell-init: error retrieving current directory: getcwd:
+cannot access parent directories: Operation not permitted
+```
+
+The server may limp along or fail outright depending on whether it touches the filesystem, and the cause is invisible either way. Add `ProtectedFolder` to `LocaCore` (pure, so it is testable) and warn in the add sheet and the detail pane. Warn, never reject: a user who has granted the permission, or whose server never reads a file, is entitled to carry on.
+
+- [ ] **Step 1: Write `RunnerAgent.swift`, then `RunnerController.swift` over it**
+- [ ] **Step 2: Add `ProtectedFolder` to `LocaCore` with tests** — cover each guarded directory, ordinary locations, a similarly named sibling (`~/Downloads2` is not inside `~/Downloads`), and another user's home.
+- [ ] **Step 3: Add `--start-runner`, `--stop-runner`, and `--runner-status` to the app binary**, looking the project up in the saved config so a runner started from a shell uses exactly the command the UI would. This is what makes the milestone verifiable without clicking.
+- [ ] **Step 4: Build** — `make app`
+- [ ] **Step 5: Commit** — `feat: drive per-project launchd agents from the app`
 
 ### Task 4.2: Detail panel, log tail, crash-loop offer
 

@@ -9,6 +9,7 @@ import SwiftUI
 struct ProjectListView: View {
     let store: AppStore
     let helper: HelperClient
+    let runners: RunnerController
 
     @State private var droppedFolder: URL?
     @State private var selection: Project.ID?
@@ -48,7 +49,13 @@ struct ProjectListView: View {
         ) {
             Button("Remove", role: .destructive) {
                 if let project = removalCandidate {
-                    Task { try? await store.remove(project) }
+                    Task {
+                        // The agent goes first. Dropping the project while its
+                        // launchd agent is still loaded would leave a server
+                        // running with nothing in the UI to stop it.
+                        runners.removeAgent(project)
+                        try? await store.remove(project)
+                    }
                 }
                 removalCandidate = nil
             }
@@ -56,6 +63,10 @@ struct ProjectListView: View {
         } message: {
             Text("The folder and its contents are left alone. Only the domain is removed.")
         }
+        // Polls only while this pane is on screen. An idle app spawning
+        // launchctl every three seconds forever is a bill nobody asked for.
+        .onAppear { runners.startPolling { store.projects } }
+        .onDisappear { runners.stopPolling() }
     }
 
     // MARK: - Header and banner
@@ -139,8 +150,9 @@ struct ProjectListView: View {
                 ProjectDetailPane(
                     project: selectedProject(in: projects),
                     store: store,
+                    runners: runners,
                     onRemove: { removalCandidate = $0 })
-                    .frame(minWidth: 280)
+                    .frame(minWidth: 300)
             }
             .padding(.horizontal, 24)
         }
@@ -183,8 +195,13 @@ struct ProjectListView: View {
                             // Allowed, but only one of them can be listening.
                             Badge(text: "shared port", tone: .warning)
                         }
-                        if project.runner != nil {
-                            Badge(text: "runner", tone: .neutral)
+                        if runners.unstable.contains(project.id) {
+                            Badge(text: "crashing", tone: .danger)
+                        } else if project.runner != nil {
+                            Badge(
+                                text: runners.status(for: project).isRunning
+                                    ? "running" : "stopped",
+                                tone: runners.status(for: project).isRunning ? .good : .neutral)
                         }
                     }
 

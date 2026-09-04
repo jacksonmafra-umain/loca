@@ -49,6 +49,50 @@ enum CommandLineMode {
             applyDomains(spec)
             exit(0)
         }
+        if let slug = value(of: "--start-runner", in: CommandLine.arguments) {
+            runner(slug) { try RunnerAgent.start($0, paths: Paths()) }
+            exit(0)
+        }
+        if let slug = value(of: "--stop-runner", in: CommandLine.arguments) {
+            runner(slug) { try RunnerAgent.stop($0) }
+            exit(0)
+        }
+        if let slug = value(of: "--runner-status", in: CommandLine.arguments) {
+            runner(slug) { project in
+                let status = RunnerAgent.status(for: project)
+                switch status.state {
+                case .running(let pid): print("running, pid \(pid)")
+                case .notRunning: print("loaded but not running")
+                case .notLoaded: print("not loaded")
+                }
+                if let exit = status.lastExitStatus { print("last exit status: \(exit)") }
+                if let runs = status.runs { print("runs: \(runs)") }
+            }
+            exit(0)
+        }
+    }
+
+    // MARK: - Runner
+
+    /// Looks the project up in the saved config, so a runner started from the
+    /// shell uses exactly the command and folder the UI would.
+    private static func runner(_ slug: String, _ body: (Project) throws -> Void) {
+        do {
+            let config = try ConfigStore(paths: Paths()).load()
+            guard let project = config.projects.first(where: { $0.slug == slug }) else {
+                let known = config.projects.map(\.slug).joined(separator: ", ")
+                let message =
+                    "no project with slug \"\(slug)\""
+                    + (known.isEmpty ? "" : " (known: \(known))") + "\n"
+                FileHandle.standardError.write(Data(message.utf8))
+                exit(1)
+            }
+            try body(project)
+        } catch {
+            FileHandle.standardError.write(
+                Data("runner command failed: \(error.localizedDescription)\n".utf8))
+            exit(1)
+        }
     }
 
     /// Reads `--flag value` or `--flag=value`.
