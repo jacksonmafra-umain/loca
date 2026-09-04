@@ -13,6 +13,17 @@ releases. `1.0.0` marks the point where the design document's scope is complete.
 
 ### Added
 
+- The port inspector: every listening TCP port with the process that owns it,
+  polled every two seconds while the tab is visible and not at all otherwise.
+  Docker-published ports are resolved to their container name and image
+  through the Docker socket, which is the whole point — under `lsof` they all
+  belong to `com.docker.backend` with one shared pid. Degrades silently on a
+  machine without Docker.
+- The domain column, cross-referencing each port with the registered projects,
+  and row actions: open, reveal the working folder, copy the pid, create a
+  domain for this port, and stop the process (SIGTERM, then SIGKILL five
+  seconds later, behind a confirmation).
+- `--inspect` on the app binary, which prints the same table.
 - The project runner: one `launchd` agent per project in `gui/$UID`, with
   start, stop, restart, start-at-login, restart-on-crash, and a live log tail.
   Stop is `bootout`, which tears down the whole process group — killing the
