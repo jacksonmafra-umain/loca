@@ -1,0 +1,23 @@
+name: Select the newest Xcode
+description: >
+  Picks the highest Xcode version installed on the runner and prints the Swift
+  version it provides.
+
+# A runner image's default Xcode lags the current release, and a toolchain older
+# than the one a change was written against rejects code that compiled locally —
+# which is exactly how the first CI run failed, on a concurrency rule that a
+# newer compiler applied differently. Selecting the newest available, and
+# printing what that turned out to be, makes the difference visible in the log
+# instead of surprising.
+runs:
+  using: composite
+  steps:
+    - name: Select
+      shell: bash
+      run: |
+        set -euo pipefail
+        newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+        echo "selecting $newest"
+        sudo xcode-select -s "$newest"
+        xcodebuild -version
+        swift --version

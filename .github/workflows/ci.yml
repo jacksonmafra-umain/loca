@@ -21,6 +21,7 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/select-newest-xcode
 
       - name: Show the toolchain
         run: swift --version
