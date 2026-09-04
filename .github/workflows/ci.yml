@@ -20,7 +20,7 @@ jobs:
     name: Test LocaCore
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/select-newest-xcode
 
       - name: Show the toolchain
@@ -33,7 +33,7 @@ jobs:
     name: Build both executables
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The bundle is deliberately not assembled here. `make app` needs a
       # code-signing identity, and putting a certificate into CI to prove the
@@ -49,7 +49,7 @@ jobs:
     name: Verify the pinned Caddy checksum
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Catches a pin that has gone stale or a release that was replaced
       # upstream, which would otherwise only surface on someone's first build.
