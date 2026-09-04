@@ -11,6 +11,11 @@ breaking change to any of the three means a major version.
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-09-05
+
+The four things the design document deferred. Three are done; the fourth is
+half done and honestly labelled.
+
 ### Added
 
 - `make dmg` and `make release`, producing a drag-to-install disk image, and
@@ -43,6 +48,52 @@ breaking change to any of the three means a major version.
   Starting anyway produced a working-directory failure in the log that named
   the symptom rather than the cause, and restart-on-crash then retried it every
   ten seconds indefinitely.
+
+### Known limitation
+
+- Notarization is not possible without a **Developer ID Application**
+  certificate, which requires a paid Apple Developer Program membership. A
+  build signed with an `Apple Development` certificate runs on the machine that
+  made it and is refused by Gatekeeper elsewhere. Auto-update is deliberately
+  absent until that changes: an updater's feed key is roughly as sensitive as
+  the signing certificate, and it earns that risk only once there is notarized
+  distribution to update from.
+
+## [1.1.1] — 2026-09-04
+
+### Fixed
+
+- `SMAppService` was passed into an async call from an isolated context, which
+  Swift rejects — and rejects *differently* by version and optimization level.
+  It compiled on 6.3 locally, passed a debug build on the runner's 6.2.4, and
+  failed that same toolchain's release build. The callback form is bridged with
+  a continuation instead, so nothing crosses an isolation boundary at all.
+- GitHub reported the repository as unlicensed. Its detection reads `LICENSE`
+  as a whole, so the Caddy attribution appended there made the MIT text
+  unrecognisable. That moved to `NOTICE`.
+- CI selects the newest Xcode on the runner and prints the toolchain, and
+  `make check` runs the test suite and a release build together — the
+  difference between those two is what let the first failure past.
+
+## [1.1.0] — 2026-09-04
+
+### Added
+
+- A README trimmed to a landing page with screenshots, and six wiki pages
+  carrying the detail: installing, adding domains, troubleshooting, the
+  command-line reference, the architecture, and uninstalling.
+- Attribution in the sidebar footer, an About card in Setup, and the bundle's
+  copyright field, plus a `LICENSE`.
+- The window reopens on the pane you were last using.
+- CI, `CODEOWNERS`, and a Dependabot config — the files GitHub cannot inherit
+  from an owner-level `.github` repository.
+
+### Fixed
+
+- Ports rendered with a thousands separator: `127.0.0.1:2 020`. Interpolating
+  an `Int` into SwiftUI's `Text` goes through `LocalizedStringKey`, which
+  formats it as a number. Found by looking at the first screenshot.
+- The window's close, minimise, and zoom buttons clipped the top of every pane.
 
 ## [1.0.0] — 2026-09-04
 
@@ -251,7 +302,10 @@ binary.
 - Crash-loop detection: three restarts within 60 seconds marks a runner
   unstable.
 
-[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/jacksonmafra-umain/loca/compare/v1.1.1...v1.2.0
+[1.1.1]: https://github.com/jacksonmafra-umain/loca/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/jacksonmafra-umain/loca/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.6.0...v1.0.0
 [0.6.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.4.0...v0.5.0
