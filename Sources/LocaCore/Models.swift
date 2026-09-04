@@ -50,6 +50,17 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var wildcardDomain: String { "*.\(slug).test" }
     public var agentLabel: String { Paths.runnerLabel(slug: slug) }
 
+    /// `127.0.0.1:<port>`, as a `String`.
+    ///
+    /// Built here rather than interpolated at each use site, because
+    /// interpolating an `Int` straight into SwiftUI's `Text` goes through
+    /// `LocalizedStringKey`, which formats it as a *number* — port 2020 renders
+    /// as "2 020". A string built first has no such problem.
+    public var upstream: String { "127.0.0.1:\(port)" }
+
+    /// The port as plain digits, for the same reason.
+    public var portText: String { String(port) }
+
     private enum CodingKeys: String, CodingKey {
         case id, slug, folder, port, enabled, runner
     }

@@ -40,7 +40,7 @@ struct InspectorView: View {
         } message: {
             if let row = killCandidate {
                 Text(
-                    "pid \(row.pid) gets SIGTERM, then SIGKILL five seconds later if it is still running. Unsaved work in that process is lost."
+                    "pid \(String(row.pid)) gets SIGTERM, then SIGKILL five seconds later if it is still running. Unsaved work in that process is lost."
                 )
             }
         }
@@ -71,7 +71,7 @@ struct InspectorView: View {
                     .foregroundStyle(Theme.accent)
 
                 Group {
-                    Text("\(inspector.rows.count) ")
+                    Text(String(inspector.rows.count) + " ")
                         .foregroundStyle(Theme.text)
                         + Text(inspector.rows.count == 1 ? "port listening" : "ports listening")
                         .foregroundStyle(Theme.textSecondary)
@@ -232,7 +232,9 @@ struct InspectorView: View {
         .contentShape(Rectangle())
         .contextMenu {
             if row.domain == nil {
-                Button("Create a domain for port \(row.port)") { onCreateDomain(row.port) }
+                Button("Create a domain for port \(String(row.port))") {
+                    onCreateDomain(row.port)
+                }
             } else {
                 Button("Open \(row.domain ?? "")") {
                     if let domain = row.domain, let url = URL(string: "https://\(domain)") {

@@ -296,7 +296,7 @@ struct ProjectDetailPane: View {
                     .tracking(0.6)
                     .foregroundStyle(Theme.textTertiary)
 
-                detailRow("Upstream", "127.0.0.1:\(project.port)", monospaced: true)
+                detailRow("Upstream", project.upstream, monospaced: true)
                 detailRow("Folder", project.folder.path(percentEncoded: false), monospaced: true)
                 detailRow("Certificate", "issued locally, apex and wildcard")
             }
@@ -312,7 +312,7 @@ struct ProjectDetailPane: View {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.2")
                             .foregroundStyle(Theme.accentSoft)
-                        Text("Shares port \(project.port)")
+                        Text("Shares port \(project.portText)")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Theme.text)
                     }

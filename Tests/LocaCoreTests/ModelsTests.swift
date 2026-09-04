@@ -24,6 +24,25 @@ struct ModelsTests {
         #expect(project.agentLabel == "dev.loca.run.projeto1")
     }
 
+    /// Ports are rendered as digits, never as formatted numbers. Interpolating
+    /// an Int into SwiftUI's Text goes through LocalizedStringKey, which
+    /// formats it — port 2020 came out as "2 020" on screen until these
+    /// existed.
+    @Test func theUpstreamCarriesNoThousandsSeparator() {
+        let project = Project(slug: "a", folder: URL(filePath: "/tmp/a"), port: 2020)
+        #expect(project.upstream == "127.0.0.1:2020")
+        #expect(project.portText == "2020")
+        #expect(!project.upstream.contains(" "))
+        #expect(!project.upstream.contains(","))
+    }
+
+    @Test(arguments: [1, 80, 2020, 8080, 54623, 65535])
+    func everyPortRendersAsPlainDigits(port: Int) {
+        let project = Project(slug: "a", folder: URL(filePath: "/tmp/a"), port: port)
+        #expect(project.portText == String(port))
+        #expect(project.upstream == "127.0.0.1:" + String(port))
+    }
+
     @Test func aProjectWithoutARunnerStaysDecodable() throws {
         let project = Project(slug: "api", folder: URL(filePath: "/tmp/api"), port: 8080)
         #expect(project.runner == nil)
