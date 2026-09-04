@@ -18,6 +18,20 @@ APP       := $(BUILD_DIR)/$(APP_NAME).app
 CONTENTS  := $(APP)/Contents
 SWIFT_BIN := .build/$(CONFIG)
 
+# Caddy is pinned by version and by checksum, and not committed. Pinning both
+# means a third party's build is byte-identical to ours, and a tampered or
+# truncated download is refused rather than signed into the bundle.
+CADDY_VERSION := 2.11.4
+CADDY_SHA256_arm64 := 9efb0af2d6cf09cfb5053c0e51721b9b3d4956d346234f39368d943d25a3c9a7
+CADDY_SHA256_amd64 := 34bc9e5cceee8d67844ef51da624f5b79e8d070f27236e050c3f0066a2dba534
+
+CADDY_ARCH := $(if $(filter arm64,$(shell uname -m)),arm64,amd64)
+CADDY_SHA256 := $(CADDY_SHA256_$(CADDY_ARCH))
+CADDY_TARBALL := caddy_$(CADDY_VERSION)_mac_$(CADDY_ARCH).tar.gz
+CADDY_URL := https://github.com/caddyserver/caddy/releases/download/v$(CADDY_VERSION)/$(CADDY_TARBALL)
+VENDOR_DIR := vendor
+CADDY := $(VENDOR_DIR)/caddy
+
 # Whichever codesigning identity this machine has. Override to pick another:
 #   make app SIGN_ID="Apple Development: you (XXXXXXXXXX)"
 # List them with: security find-identity -v -p codesigning
@@ -28,6 +42,7 @@ SIGN_ID ?= $(shell security find-identity -v -p codesigning | head -1 | sed -E '
 .PHONY: help
 help:
 	@echo "make test              run the LocaCore test suite"
+	@echo "make vendor-caddy      download and verify Caddy $(CADDY_VERSION) into $(CADDY)"
 	@echo "make build             compile both executables"
 	@echo "make app               assemble and sign $(APP)"
 	@echo "make install           copy the app to /Applications and launch it"
@@ -44,6 +59,30 @@ identity:
 test:
 	swift test
 
+# The tarball is checksummed on download and deleted afterwards, so an
+# unexpected binary is refused before it can be signed into the bundle rather
+# than after. An existing vendor/caddy is left alone; `make revendor-caddy`
+# forces a fresh download.
+$(CADDY):
+	@mkdir -p "$(VENDOR_DIR)"
+	@echo "downloading $(CADDY_TARBALL)"
+	@curl -fsSL -o "$(VENDOR_DIR)/$(CADDY_TARBALL)" "$(CADDY_URL)"
+	@echo "$(CADDY_SHA256)  $(VENDOR_DIR)/$(CADDY_TARBALL)" | shasum -a 256 -c - \
+		|| { echo "error: checksum mismatch for $(CADDY_TARBALL); refusing it"; \
+		     rm -f "$(VENDOR_DIR)/$(CADDY_TARBALL)"; exit 1; }
+	@tar -xzf "$(VENDOR_DIR)/$(CADDY_TARBALL)" -C "$(VENDOR_DIR)" caddy
+	@rm -f "$(VENDOR_DIR)/$(CADDY_TARBALL)"
+	@chmod +x "$(CADDY)"
+
+.PHONY: vendor-caddy
+vendor-caddy: $(CADDY)
+	@"$(CADDY)" version
+
+.PHONY: revendor-caddy
+revendor-caddy:
+	rm -f "$(CADDY)"
+	$(MAKE) vendor-caddy
+
 .PHONY: build
 build:
 	swift build -c $(CONFIG) --product $(APP_BINARY)
@@ -52,7 +91,7 @@ build:
 # The layout SMAppService expects: both executables in Contents/MacOS, and the
 # daemon's plist in Contents/Library/LaunchDaemons.
 .PHONY: app
-app: build
+app: build $(CADDY)
 	@if [ -z "$(SIGN_ID)" ]; then \
 		echo "error: no codesigning identity found."; \
 		echo "       Install an Apple Development certificate, or pass SIGN_ID=..."; \
@@ -62,13 +101,16 @@ app: build
 	mkdir -p "$(CONTENTS)/MacOS" "$(CONTENTS)/Resources" "$(CONTENTS)/Library/LaunchDaemons"
 	cp "$(SWIFT_BIN)/$(APP_BINARY)" "$(CONTENTS)/MacOS/$(APP_BINARY)"
 	cp "$(SWIFT_BIN)/$(HELPER_NAME)" "$(CONTENTS)/MacOS/$(HELPER_NAME)"
+	cp "$(CADDY)" "$(CONTENTS)/Resources/caddy"
 	cp Resources/Info.plist "$(CONTENTS)/Info.plist"
 	cp Resources/$(HELPER_LABEL).plist "$(CONTENTS)/Library/LaunchDaemons/$(HELPER_LABEL).plist"
 	printf 'APPL????' > "$(CONTENTS)/PkgInfo"
 	plutil -lint "$(CONTENTS)/Info.plist"
 	plutil -lint "$(CONTENTS)/Library/LaunchDaemons/$(HELPER_LABEL).plist"
-	@# The helper is signed first: the app's signature has to cover the already
-	@# signed nested binary, or the bundle seal does not verify.
+	@# Every nested Mach-O is signed before the app. An unsigned binary inside a
+	@# signed bundle invalidates the outer signature, and Caddy arrives unsigned.
+	codesign --force --options runtime --timestamp=none \
+		--sign "$(SIGN_ID)" "$(CONTENTS)/Resources/caddy"
 	codesign --force --options runtime --timestamp=none \
 		--identifier "$(HELPER_LABEL)" \
 		--sign "$(SIGN_ID)" "$(CONTENTS)/MacOS/$(HELPER_NAME)"
