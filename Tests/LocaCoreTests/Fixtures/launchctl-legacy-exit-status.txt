@@ -1,0 +1,9 @@
+gui/501/dev.loca.run.projeto1 = {
+	active count = 0
+	path = /Users/test/Library/LaunchAgents/dev.loca.run.projeto1.plist
+	type = LaunchAgent
+	state = not running
+
+	runs = 4
+	last exit status = 256
+}

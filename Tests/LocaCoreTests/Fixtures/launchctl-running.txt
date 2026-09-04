@@ -1,0 +1,55 @@
+gui/501/dev.loca.run.projeto1 = {
+	active count = 3
+	path = /Users/test/Library/LaunchAgents/dev.loca.run.projeto1.plist
+	type = LaunchAgent
+	state = running
+
+	program = /bin/zsh
+	arguments = {
+		/bin/zsh
+		-lc
+		pnpm dev
+	}
+
+	working directory = /Users/test/code/projeto1
+
+	stdout path = /Users/test/Library/Logs/dev.loca/projeto1.log
+	stderr path = /Users/test/Library/Logs/dev.loca/projeto1.log
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		LOCA_SLUG => projeto1
+		PORT => 2020
+		XPC_SERVICE_NAME => dev.loca.run.projeto1
+	}
+
+	domain = gui/501 [100023]
+	asid = 100023
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 2
+	pid = 35151
+	immediate reason = speculative
+	forks = 0
+	execs = 1
+	initialized = 1
+	trampolined = 1
+	started suspended = 0
+	proxy started suspended = 0
+	last exit code = 0
+
+	event triggers = {
+	}
+
+	spawn type = daemon (3)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+	properties = keepalive | runatload | inferred program
+}
