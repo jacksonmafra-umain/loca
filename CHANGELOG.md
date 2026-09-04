@@ -5,11 +5,45 @@ All notable changes to Loca are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-While the version stays below `1.0.0` the public surface — the XPC protocol, the
-`config.json` schema, and the command-line flags — may change between minor
-releases. `1.0.0` marks the point where the design document's scope is complete.
+The public surface is the XPC protocol, the `config.json` schema, and the
+command-line flags. It changed freely below `1.0.0`; from `1.0.0` on, a
+breaking change to any of the three means a major version.
 
 ## [Unreleased]
+
+## [1.0.0] — 2026-09-04
+
+The design document's scope is complete. Everything it set out to build works,
+and the public surface — the XPC protocol, the `config.json` schema, and the
+command-line flags — is now stable under semantic versioning.
+
+### Added
+
+- A menu bar item with a status marker and a submenu per project: open the
+  address, enable or disable the domain, and start, stop, or restart the
+  server. This is what makes closing the window sensible — with a way back and
+  the actions a click away, the window becomes one view of the app rather than
+  the app itself.
+- `make uninstall`, which reverses everything Loca installed: runner agents
+  first (one left loaded would keep a server running with nothing to stop it),
+  then certificate trust, then the helper's state, then the daemon. Every step
+  is attempted even after an earlier one fails, and each is reported. It
+  deliberately leaves the domain list, the runner logs, and the project
+  folders.
+- A README covering the design, the build and signing steps, the three
+  first-run steps with a shell equivalent for each, how domain detection
+  works, and troubleshooting for every failure mode the design document
+  enumerates.
+
+### Fixed
+
+- The window's close, minimise, and zoom buttons clipped the top of every pane.
+  The title bar is now hidden, which is what the layout wanted, and each pane
+  starts below a shared inset.
+
+## [0.6.0] — 2026-09-04
+
+You can see which process is holding which port, containers included.
 
 ### Added
 
@@ -24,6 +58,13 @@ releases. `1.0.0` marks the point where the design document's scope is complete.
   domain for this port, and stop the process (SIGTERM, then SIGKILL five
   seconds later, behind a confirmation).
 - `--inspect` on the app binary, which prints the same table.
+
+## [0.5.0] — 2026-09-04
+
+Loca starts and stops your dev servers.
+
+### Added
+
 - The project runner: one `launchd` agent per project in `gui/$UID`, with
   start, stop, restart, start-at-login, restart-on-crash, and a live log tail.
   Stop is `bootout`, which tears down the whole process group — killing the
@@ -39,6 +80,13 @@ releases. `1.0.0` marks the point where the design document's scope is complete.
 - `--start-runner`, `--stop-runner`, and `--runner-status` on the app binary,
   which look the project up in the saved config so a runner started from a
   shell uses exactly the command the UI would.
+
+## [0.4.0] — 2026-09-04
+
+There is a window.
+
+### Added
+
 - The main window: a list of registered domains with enable toggles, port
   conflict badges, and a detail pane; a folder-drop add sheet that shows which
   files each proposed value came from and cross-checks the port against what is
@@ -170,7 +218,11 @@ binary.
 - Crash-loop detection: three restarts within 60 seconds marks a runner
   unstable.
 
-[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.6.0...v1.0.0
+[0.6.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jacksonmafra-umain/loca/releases/tag/v0.1.0

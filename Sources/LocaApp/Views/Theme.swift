@@ -75,6 +75,15 @@ enum Theme {
     static let cardRadius: CGFloat = 12
     static let sidebarWidth: CGFloat = 216
 
+    /// Top padding that keeps content clear of the window's close, minimise,
+    /// and zoom buttons.
+    ///
+    /// The window hides its title bar so the sidebar can run to the top edge,
+    /// which means those buttons float over the content rather than sitting
+    /// above it. Anything at the top of a pane has to start below them or it
+    /// gets clipped.
+    static let titleBarInset: CGFloat = 40
+
     // MARK: - Appearance
 
     /// Resolves per appearance through `NSColor`'s dynamic provider, which is

@@ -67,7 +67,7 @@ struct OnboardingView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 24)
-        .padding(.top, 22)
+        .padding(.top, Theme.titleBarInset)
         .padding(.bottom, 16)
     }
 

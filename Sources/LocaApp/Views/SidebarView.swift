@@ -97,7 +97,9 @@ struct SidebarView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 18)
+        // Clears the window buttons, which float over the sidebar because the
+        // title bar is hidden.
+        .padding(.top, Theme.titleBarInset)
         .padding(.bottom, 20)
     }
 

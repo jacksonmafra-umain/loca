@@ -59,7 +59,7 @@ struct InspectorView: View {
                 set: { inspector.filter = $0 }))
         }
         .padding(.horizontal, 24)
-        .padding(.top, 22)
+        .padding(.top, Theme.titleBarInset)
         .padding(.bottom, 16)
     }
 

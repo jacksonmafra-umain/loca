@@ -93,7 +93,7 @@ struct ProjectListView: View {
                 .buttonStyle(.quiet)
         }
         .padding(.horizontal, 24)
-        .padding(.top, 22)
+        .padding(.top, Theme.titleBarInset)
         .padding(.bottom, 16)
     }
 

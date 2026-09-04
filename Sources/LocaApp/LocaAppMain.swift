@@ -24,7 +24,19 @@ struct LocaAppMain: App {
             RootView(helper: helper, store: store, runners: runners)
                 .frame(minWidth: 960, minHeight: 640)
         }
-        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+        // No title bar, so the sidebar runs to the top edge. The close,
+        // minimise, and zoom buttons then float over the content, which is why
+        // every pane starts below Theme.titleBarInset.
+        .windowStyle(.hiddenTitleBar)
+
+        // The menu bar item is what makes closing the window sensible: with a
+        // way back and per-project actions a click away, the window stops
+        // being the app and becomes one view of it.
+        MenuBarExtra {
+            MenuBarView(store: store, helper: helper, runners: runners)
+        } label: {
+            Image(systemName: "link")
+        }
     }
 }
 
@@ -115,7 +127,7 @@ struct ComingSoonPane: View {
                 Badge(text: "not in this release", tone: .neutral)
             }
             .padding(.horizontal, 24)
-            .padding(.top, 22)
+            .padding(.top, Theme.titleBarInset)
             .padding(.bottom, 16)
 
             VStack(spacing: 10) {
