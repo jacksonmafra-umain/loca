@@ -277,13 +277,17 @@ public enum ValidationError: Error, Equatable, Sendable {
 }
 
 public enum Validation {
+    public static let portRange = 1...65535
     public static func validate(slug: String, port: Int, folder: URL, existing: [Project],
                                 ignoring id: UUID? = nil) throws
     public static func validateFolder(_ folder: URL) throws
+    public static func validateFolderPath(_ path: String) throws
 }
 ```
 
-`validateFolder` rejects relative paths and any path whose components contain `..`. Port must be `1...65535`. Duplicate slug is rejected; two projects on the same port are allowed (the UI flags them, the model does not reject them).
+The real gate is `validateFolderPath`, on the string. `URL(filePath:)` resolves a relative path against the current directory, so by the time a folder is a URL it is always absolute — but a folder arriving over XPC is a raw string, and that is exactly where a relative or traversing path has to be refused. `validateFolder` delegates to it.
+
+It rejects relative paths and any path whose components contain `..`. Port must be `1...65535`. Duplicate slug is rejected; two projects on the same port are allowed (the UI flags them, the model does not reject them).
 
 - [ ] **Step 1: Write the tests**
 
@@ -415,7 +419,7 @@ Only `enabled` projects get a site block. Blocks are emitted in slug order so th
 {
 	admin 127.0.0.1:2019
 	storage file_system {
-		root /Library/Application Support/dev.loca/caddy-data
+		root "/Library/Application Support/dev.loca/caddy-data"
 	}
 }
 
@@ -424,10 +428,12 @@ projeto1.test, *.projeto1.test {
 	reverse_proxy 127.0.0.1:2020
 
 	handle_errors {
-		respond "Loca: projeto1.test is registered, but nothing is listening on 127.0.0.1:2020." {http.error.status_code}
+		respond "Loca: projeto1.test is registered, but nothing is listening on 127.0.0.1:2020." {err.status_code}
 	}
 }
 ```
+
+Two details the output has to get right: the storage root lives under "Application Support", so it needs quoting or Caddy reads the spaces as argument separators; and inside `handle_errors` the Caddyfile shorthand for the status to pass through is `{err.status_code}`.
 
 - [ ] **Step 1: Write the snapshot tests**
 
@@ -492,9 +498,13 @@ public enum LaunchctlStatusParser {
 }
 ```
 
-A non-zero `exitCode` (or output containing `Could not find service`) means `.notLoaded`. Otherwise `pid = N` yields `.running`, its absence yields `.notRunning`, and `last exit status = N` and `runs = N` are captured when present.
+A non-zero `exitCode` (or output containing `Could not find service`) means `.notLoaded`. Otherwise `pid = N` yields `.running`, its absence yields `.notRunning`, and `runs = N` is captured when present.
 
-- [ ] **Step 1: Capture the three fixtures by hand from a real `launchctl print` and write the tests against them**
+The exit status key differs by OS release: macOS 26 prints `last exit code = N` where earlier releases printed `last exit status = N`. Accept both, or the status panel goes silently blank after an OS update. There is a fourth fixture, `launchctl-legacy-exit-status.txt`, covering the older spelling.
+
+Key lookup must be anchored to a whole line. The printed block carries dozens of other `key = value` pairs, and a substring match reads `spid = 999` as the service's own pid.
+
+- [ ] **Step 1: Capture the fixtures from a real `launchctl print` — including a throwaway agent bootstrapped to exit non-zero, then booted out — and write the tests against them**
 - [ ] **Step 2: Run, fail, implement, run — PASS**
 - [ ] **Step 3: Commit** — `feat: parse launchctl print into a run status`
 
@@ -544,11 +554,16 @@ public struct ListeningPort: Equatable, Identifiable, Sendable {
 }
 
 public enum LsofParser {
+    public static let arguments = ["+c", "0", "-nP", "-iTCP", "-sTCP:LISTEN"]
     public static func parse(_ output: String) -> [ListeningPort]
 }
 ```
 
-The fixture must contain: a `node` process on `*:3000` (IPv4), the same process on IPv6, a `com.docker.backend` line on `*:5432`, a line with a bracketed IPv6 address, and the header row. Parsing skips the header, ignores rows without `(LISTEN)`, deduplicates identical rows, and sorts by port then pid.
+`+c 0` is not optional. Without it `lsof` truncates the COMMAND column to nine characters, `com.docker.backend` arrives as `com.docke`, and every container row goes unrecognized — which would quietly defeat milestone 5. Because `+c 0` also makes that column's width vary with the longest process name on the machine, no parsing may depend on column positions: fields are read by index after splitting on whitespace, which is safe because `lsof` escapes a space inside a name as `\x20`. That escape has to be decoded, or the name reaches the UI looking like a parser bug.
+
+The address is split on its last colon, the only separator that handles `*:3000`, `127.0.0.1:3000`, and `[::1]:8099` alike.
+
+The fixture must contain: a `node` process on `*:3000` (IPv4), the same process on IPv6, an exact duplicate row, a `com.docker.backend` line on `*:5432`, a bracketed IPv6 address, a command name with an escaped space, and a non-LISTEN row. Parsing skips the header, ignores rows without `(LISTEN)`, deduplicates identical rows, and sorts by port then pid.
 
 - [ ] **Step 1: Write the fixture and the tests** — assert the exact row count, that the docker row sets `isDockerBackend`, that IPv6 addresses parse, and that the header is skipped.
 - [ ] **Step 2: Run, fail, implement, run — PASS**
@@ -598,7 +613,7 @@ public struct InspectorRow: Equatable, Identifiable, Sendable {
 
 **Files:**
 - Create: `Sources/LocaCore/ProjectDetector.swift`, `Tests/LocaCoreTests/ProjectDetectorTests.swift`
-- Create fixtures: `Tests/LocaCoreTests/Fixtures/Projects/next/`, `vite/`, `compose/`, `dotenv/`, `bare/`
+- Create fixtures: `Tests/LocaCoreTests/Fixtures/Projects/next/`, `vite/`, `compose/`, `node-start/`, `bare/`
 
 **Interfaces:**
 - Produces:
@@ -631,11 +646,13 @@ Fixture folders and their expected results:
 | `next/` | `package.json` with `scripts.dev = "next dev"`, `next.config.js`, `pnpm-lock.yaml` | 3000 | `pnpm dev` |
 | `vite/` | `package.json` with `scripts.dev = "vite"`, `vite.config.ts` with `port: 5174`, `yarn.lock` | 5174 | `yarn dev` |
 | `compose/` | `docker-compose.yml` publishing `"8080:80"` | 8080 | `docker compose up` |
-| `dotenv/` | `.env` with `PORT=4321`, `package.json` with `scripts.start = "node server.js"` | 4321 | `npm run start` |
+| `node-start/` | `package.json` with `scripts.start = "node server.js"`, no lockfile | `nil` | `npm run start` |
 | `bare/` | an empty folder | `nil` | `nil` |
 
+The `.env` cases are built in a temporary folder by the test rather than committed. A real `.env` in the repository is a file nobody should have to think about, and tooling tends to treat it as a secret — this repository's own permission rules refuse to write one.
+
 - [ ] **Step 1: Create the five fixture folders with exactly those contents**
-- [ ] **Step 2: Write one test per fixture asserting port, command, and that `sources` is non-empty where a value was found**
+- [ ] **Step 2: Write one test per fixture asserting port, command, and that `sources` is non-empty where a value was found, plus temporary-folder tests for `.env`, `.env.local`, a commented-out `PORT`, quoted values, the three port-flag spellings, each lockfile, and a malformed `package.json` that must not stop compose from being consulted**
 - [ ] **Step 3: Run, fail, implement, run — PASS**
 - [ ] **Step 4: Commit** — `feat: propose port and command by reading project files`
 
@@ -654,7 +671,14 @@ public struct DNSQuestion: Equatable, Sendable {
     public var klass: UInt16           // 1 = IN
 }
 
-public enum DNSRecordType: UInt16, Sendable { case a = 1, aaaa = 28, other = 0 }
+/// `other` keeps the wire number rather than collapsing to zero, so a
+/// response can echo the question exactly as it was asked.
+public enum DNSRecordType: Equatable, Hashable, Sendable {
+    case a, aaaa
+    case other(UInt16)
+    public init(rawValue: UInt16)
+    public var rawValue: UInt16
+}
 
 public struct DNSMessage: Equatable, Sendable {
     public var id: UInt16
@@ -673,7 +697,7 @@ public struct DNSAnswer: Equatable, Sendable {
 }
 
 public enum DNSCodecError: Error, Equatable, Sendable {
-    case truncated, unsupportedLabelLength, compressionPointerInQuestion
+    case truncated, unsupportedLabelLength, compressionPointerUnsupported
 }
 
 public enum DNSCodec {
@@ -688,7 +712,9 @@ The encoder writes the question section back verbatim (labels, no compression) a
 
 - [ ] **Step 1: Write the tests**
 
-Cover: decode a hand-built A query for `projeto1.test` and assert id, question name, and type; encode-then-decode round-trips a response holding one A answer of `127.0.0.1`; the same for an AAAA answer of `::1`; a truncated buffer throws `.truncated`; a label length of 64 throws `.unsupportedLabelLength`; a `0xC0` pointer byte in the question throws `.compressionPointerInQuestion`; `stripTCPPrefix(prefixedForTCP(x)) == x`; `stripTCPPrefix` on a short buffer throws `.truncated`.
+Cover: decode a hand-built A query for `projeto1.test` and assert id, question name, and type; encode-then-decode round-trips a response holding one A answer of `127.0.0.1`; the same for an AAAA answer of `::1`; a truncated buffer throws `.truncated`; a label length of 64 throws `.unsupportedLabelLength`; a `0xC0` pointer byte throws `.compressionPointerUnsupported`; `stripTCPPrefix(prefixedForTCP(x)) == x`; `stripTCPPrefix` on a short buffer throws `.truncated`.
+
+Build the query bytes by hand in the test, so decoding is exercised against real wire layout rather than against our own encoder. Watch the flag layout while doing it: RD sits in the *high* flags byte and RCODE in the low one, so a standard query is `0x0100` — writing it the other way round sets RCODE to 1 and the test fails against correct code.
 
 - [ ] **Step 2: Run, fail, implement, run — PASS**
 - [ ] **Step 3: Commit** — `feat: encode and decode DNS messages for the local responder`
