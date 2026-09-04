@@ -1492,10 +1492,16 @@ A `MenuBarExtra` listing every project with a status dot (running, stopped, unst
 The README covers, in this order: what Loca does and the four-line summary of how; requirements (macOS 14, Xcode 26, an Apple Development signing identity); `make vendor-caddy && make app && make install`; how to point `SIGN_ID` at your own identity, including how to find it with `security find-identity -v -p codesigning`; the three authentication prompts and what each is for; the Firefox `security.enterprise_roots.enabled` caveat; the `.local`-in-`/etc/hosts` note; `make uninstall` and what it removes; troubleshooting for the failure modes the spec enumerates (`:80`/`:443` already bound, a pre-existing `/etc/resolver/test`, revoked CA trust, a runner crash loop, nothing listening upstream); and a statement that the app is Development-signed and not notarized, so a third party builds it themselves.
 
 - [ ] **Step 1: Write `README.md`**
-- [ ] **Step 2: Add the `uninstall` target** — `launchctl bootout` every runner agent, `SMAppService` unregister via a `--uninstall` flag on the app binary, `caddy untrust`, remove `/etc/resolver/test`, and remove `/Library/Application Support/dev.loca`.
-- [ ] **Step 3: Verify the clean-room build** — clone the repository into a fresh directory, run `make vendor-caddy && make app`, and confirm it succeeds with no manual step the README does not mention.
-- [ ] **Step 4: Verify uninstall** — run `make uninstall`, then confirm `scutil --dns` no longer lists `test`, `security find-certificate -c "Caddy Local Authority" /Library/Keychains/System.keychain` finds nothing, and `launchctl print system/dev.loca.helper` reports the service is gone.
-- [ ] **Step 5: Commit** — `docs: document building, signing, installing, and uninstalling Loca`
+- [ ] **Step 2: Add the `uninstall` target**, driving a `--uninstall` flag on the app binary.
+
+Order matters. Runner agents go first: one left loaded keeps a server running with nothing remaining to stop it. Certificate trust goes next, and from the app's own session, since it lives in the user's keychain and only the user can remove it — the same reason the helper could not install it. Then the helper's state (resolver file and state directory), and the daemon last, because every step above needs it alive. Attempt every step even after one fails, and report each: a half-removed install is worse than a fully removed one with a complaint attached.
+
+Leave the domain list, the runner logs, and the project folders, and say so. Somebody uninstalling to fix a problem should not lose the record of what they had registered.
+
+- [ ] **Step 3: Verify the clean-room build** — clone the repository into a fresh directory, run `make vendor-caddy && make test && make app`, and confirm it succeeds with no manual step the README does not mention.
+- [ ] **Step 4: Verify uninstall** — run `make uninstall`, then confirm: `/etc/resolver/` no longer holds `test`, `scutil --dns` no longer lists the domain, `security dump-trust-settings` no longer shows the Caddy authority (and still shows anything unrelated the user had trusted), `/Library/Application Support/dev.loca` is gone, no `dev.loca.run.*` plists remain, `--helper-status` reports not registered, and `config.json` and the logs survive.
+- [ ] **Step 5: Reinstall afterwards**, so the machine is left working. The certificate step prompts for a password again, since the uninstall removed the old authority along with Caddy's storage.
+- [ ] **Step 6: Commit** — `docs: document building, signing, installing, and uninstalling Loca`
 
 ### Task 6.3: Close out milestone 6
 
