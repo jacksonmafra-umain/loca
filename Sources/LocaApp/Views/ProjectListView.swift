@@ -126,6 +126,10 @@ struct ProjectListView: View {
 
                 if let error = store.lastError {
                     Badge(text: error, tone: .danger, systemImage: "exclamationmark.triangle")
+                } else if !misplacedCount.isEmpty {
+                    Badge(
+                        text: misplacedCount, tone: .danger,
+                        systemImage: "questionmark.folder")
                 } else if helper.state != .installed {
                     Badge(
                         text: "helper not ready", tone: .warning,
@@ -203,6 +207,9 @@ struct ProjectListView: View {
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(Theme.text)
 
+                        if !FolderCheck.check(project.folder).isUsable {
+                            Badge(text: "folder gone", tone: .danger, systemImage: "questionmark.folder")
+                        }
                         if !store.portConflicts(for: project).isEmpty {
                             // Allowed, but only one of them can be listening.
                             Badge(text: "shared port", tone: .warning)
@@ -322,6 +329,18 @@ struct ProjectListView: View {
 
     private var servingCount: Int {
         store.projects.filter(\.enabled).count
+    }
+
+    /// Worth surfacing in the banner: a folder that moved breaks the runner
+    /// while the domain keeps working, so nothing else on this screen would
+    /// hint at it.
+    private var misplacedCount: String {
+        let count = store.misplaced().count
+        switch count {
+        case 0: return ""
+        case 1: return "1 folder missing"
+        default: return "\(count) folders missing"
+        }
     }
 
     private func selectedProject(in projects: [Project]) -> Project? {

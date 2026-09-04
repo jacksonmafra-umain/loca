@@ -11,6 +11,17 @@ breaking change to any of the three means a major version.
 
 ## [Unreleased]
 
+### Added
+
+- Detection of a project folder that moved or was deleted, with a badge on the
+  row, a count in the banner, and an offer to locate it again. The domain keeps
+  working — the proxy only needs a port — so nothing else on screen would hint
+  at it.
+- The runner now refuses to start when the folder is gone, naming the path.
+  Starting anyway produced a working-directory failure in the log that named
+  the symptom rather than the cause, and restart-on-crash then retried it every
+  ten seconds indefinitely.
+
 ## [1.0.0] — 2026-09-04
 
 The design document's scope is complete. Everything it set out to build works,
