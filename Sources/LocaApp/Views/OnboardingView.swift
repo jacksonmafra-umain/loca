@@ -14,11 +14,15 @@ struct OnboardingView: View {
     let helper: HelperClient
     let store: AppStore
     var onDone: () -> Void
+    /// Hands a slug to the domains pane, which knows how to ask for a folder.
+    /// `/etc/hosts` records neither a folder nor a port, so a migration cannot
+    /// complete without asking.
+    var onMigrate: (String) -> Void
 
     @State private var resolverBackup: String?
     @State private var caTrusted = false
     @State private var diagnostics: [String: String] = [:]
-    @State private var hostsLocalEntries: [String] = []
+    @State private var hostsCandidates: [HostsFile.Candidate] = []
     @State private var busy = false
     @State private var error: String?
 
@@ -177,14 +181,8 @@ struct OnboardingView: View {
                     "Firefox does not use the macOS keychain. Open about:config and set security.enterprise_roots.enabled to true, or .test sites will show a certificate warning there while working everywhere else."
             )
 
-            if !hostsLocalEntries.isEmpty {
-                NoteCard(
-                    icon: "doc.text",
-                    tone: Theme.accentSoft,
-                    title: "You have .local entries in /etc/hosts",
-                    message:
-                        "\(hostsLocalEntries.joined(separator: ", ")). Loca will not touch them. Worth knowing that .local collides with mDNS and gives you no HTTPS, which is exactly what .test avoids."
-                )
+            ForEach(hostsCandidates, id: \.base) { candidate in
+                HostsMigrationCard(candidate: candidate, store: store, onMigrate: onMigrate)
             }
         }
     }
@@ -294,7 +292,7 @@ struct OnboardingView: View {
         await helper.refreshState()
         diagnostics = await helper.diagnostics()
         caTrusted = await helper.certificateAuthorityIsTrusted()
-        hostsLocalEntries = HostsFile.dotLocalEntries()
+        hostsCandidates = HostsFile.candidates(in: HostsFile.read())
     }
 }
 
@@ -398,23 +396,3 @@ struct AnyButtonStyle: ButtonStyle {
     }
 }
 
-/// Reads the user's `/etc/hosts` looking for the workaround Loca replaces.
-///
-/// Read-only, always. The spec is explicit: warn once, never touch it.
-enum HostsFile {
-    static func dotLocalEntries() -> [String] {
-        guard let contents = try? String(contentsOf: URL(filePath: "/etc/hosts"), encoding: .utf8)
-        else { return [] }
-
-        var names: [String] = []
-        for line in contents.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.hasPrefix("#") else { continue }
-            for field in trimmed.split(separator: " ", omittingEmptySubsequences: true).dropFirst()
-            where field.hasSuffix(".local") {
-                names.append(String(field))
-            }
-        }
-        return names
-    }
-}

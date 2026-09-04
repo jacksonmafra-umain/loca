@@ -61,6 +61,10 @@ enum CommandLineMode {
             printListeningPorts()
             exit(0)
         }
+        if arguments.contains("--hosts-report") {
+            printHostsReport()
+            exit(0)
+        }
         if let slug = value(of: "--share-project", in: CommandLine.arguments) {
             shareProject(slug)
             exit(0)
@@ -164,6 +168,48 @@ enum CommandLineMode {
             FileHandle.standardError.write(Data(message.utf8))
             exit(1)
         }
+    }
+
+    // MARK: - Hosts file
+
+    /// Reports which `/etc/hosts` entries Loca could replace, and stops there.
+    ///
+    /// Read-only by design. The file is shared with everything else on the
+    /// machine, so the edit is the user's to make — this prints what has become
+    /// redundant and the command to open it.
+    private static func printHostsReport() {
+        let entries = HostsFile.read()
+        let candidates = HostsFile.candidates(in: entries)
+        let projects = (try? ConfigStore(paths: Paths()).load().projects) ?? []
+
+        guard !candidates.isEmpty else {
+            print("no .local entries pointing at loopback in \(HostsFile.path)")
+            return
+        }
+
+        for candidate in candidates {
+            let registered = projects.contains { $0.slug == candidate.base }
+            print("\(candidate.base).test \(registered ? "— already registered" : "— not registered yet")")
+
+            for name in candidate.names {
+                print("  \(name)")
+            }
+            print("  would become:")
+            for replacement in candidate.replacements {
+                print("    https://\(replacement)")
+            }
+
+            if registered {
+                print("  these lines are now redundant:")
+                for entry in HostsFile.lines(candidate.lineNumbers, in: entries) {
+                    print("    \(entry.lineNumber): \(entry.rawLine)")
+                }
+            }
+            print("")
+        }
+
+        print("Loca never edits \(HostsFile.path). To remove them yourself:")
+        print("  \(HostsFile.editCommand)")
     }
 
     // MARK: - Shared project file

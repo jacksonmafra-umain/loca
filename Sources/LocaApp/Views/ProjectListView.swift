@@ -12,9 +12,12 @@ struct ProjectListView: View {
     let runners: RunnerController
     /// A port handed over by the inspector, waiting for a folder to go with it.
     @Binding var pendingPort: Int?
+    /// A slug handed over by the setup pane, migrating a hosts entry.
+    @Binding var pendingSlug: String?
 
     @State private var droppedFolder: URL?
     @State private var sheetPort: Int?
+    @State private var sheetSlug: String?
     @State private var selection: Project.ID?
     @State private var isTargeted = false
     @State private var removalCandidate: Project?
@@ -40,8 +43,11 @@ struct ProjectListView: View {
             }
         }
         .sheet(item: $droppedFolder) { folder in
-            AddProjectSheet(folder: folder, store: store, initialPort: sheetPort) {
+            AddProjectSheet(
+                folder: folder, store: store, initialPort: sheetPort, initialSlug: sheetSlug
+            ) {
                 sheetPort = nil
+                sheetSlug = nil
                 Task { await helper.refreshState() }
             }
         }
@@ -51,6 +57,14 @@ struct ProjectListView: View {
             guard let port else { return }
             pendingPort = nil
             sheetPort = port
+            chooseFolder()
+        }
+        // A hosts migration knows the name but neither a folder nor a port,
+        // since /etc/hosts records neither.
+        .onChange(of: pendingSlug) { _, slug in
+            guard let slug else { return }
+            pendingSlug = nil
+            sheetSlug = slug
             chooseFolder()
         }
         .confirmationDialog(

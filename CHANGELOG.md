@@ -13,6 +13,13 @@ breaking change to any of the three means a major version.
 
 ### Added
 
+- Migration of hand-written `/etc/hosts` entries. Setup lists each family of
+  `.local` names with what one Loca domain would give instead — every name over
+  HTTPS with a trusted certificate, plus any subdomain nobody thought of yet,
+  since the wildcard covers the family. **The file is never edited.** Once the
+  domain exists, Loca shows which lines became redundant and the command to
+  open the file, and stops there.
+- `--hosts-report` for the same, from a shell.
 - `.loca.json`, a file a project can commit so anyone who clones it gets the
   same domain, port, and start command. It is a **proposal**: the local config
   always wins, drift is reported rather than applied, the slug still goes
