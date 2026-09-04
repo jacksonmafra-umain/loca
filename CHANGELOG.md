@@ -13,6 +13,21 @@ releases. `1.0.0` marks the point where the design document's scope is complete.
 
 ### Added
 
+- The project runner: one `launchd` agent per project in `gui/$UID`, with
+  start, stop, restart, start-at-login, restart-on-crash, and a live log tail.
+  Stop is `bootout`, which tears down the whole process group — killing the
+  parent alone routinely leaves a child holding the port.
+- Crash-loop detection. A broken command with restart-on-crash relaunches about
+  every ten seconds forever, which is launchd's throttle rather than
+  protection; three relaunches within a minute marks the project unstable and
+  offers the one action that ends it.
+- A warning when a project folder sits inside `~/Downloads`, `~/Documents`,
+  `~/Desktop`, or iCloud Drive. macOS guards those, and a `launchd` agent has
+  no window to show a consent prompt in, so it cannot even resolve its own
+  working directory there. A warning and never a rejection.
+- `--start-runner`, `--stop-runner`, and `--runner-status` on the app binary,
+  which look the project up in the saved config so a runner started from a
+  shell uses exactly the command the UI would.
 - The main window: a list of registered domains with enable toggles, port
   conflict badges, and a detail pane; a folder-drop add sheet that shows which
   files each proposed value came from and cross-checks the port against what is
