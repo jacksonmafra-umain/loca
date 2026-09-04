@@ -28,6 +28,14 @@ enum RunnerAgent {
     static func start(_ project: Project, paths: Paths) throws {
         guard let runner = project.runner else { throw RunnerError.missingRunner }
 
+        // Refuse before launchd gets involved. Starting anyway produces a
+        // working-directory failure in the log that names the symptom and not
+        // the cause, and `KeepAlive` then retries it every ten seconds
+        // forever.
+        if let problem = FolderCheck.problem(with: project.folder) {
+            throw RunnerError.folderUnusable(problem)
+        }
+
         try FileManager.default.createDirectory(
             at: paths.logDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(
@@ -108,12 +116,15 @@ enum RunnerAgent {
 
 enum RunnerError: Error, LocalizedError {
     case missingRunner
+    case folderUnusable(String)
     case launchctlFailed(command: String, status: Int32, output: String)
 
     var errorDescription: String? {
         switch self {
         case .missingRunner:
             return "this project has no start command configured"
+        case .folderUnusable(let problem):
+            return problem
         case .launchctlFailed(let command, let status, let output):
             let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
             return "launchctl \(command) failed (\(status))"

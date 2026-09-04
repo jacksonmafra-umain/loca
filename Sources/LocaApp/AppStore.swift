@@ -65,6 +65,22 @@ final class AppStore {
         try await commit(projects.filter { $0.id != project.id })
     }
 
+    /// Points a project at a new folder, keeping its slug, port, and runner.
+    ///
+    /// A relocation is not the same as editing the folder field: the slug and
+    /// port are what the user's browser and their other tooling already know,
+    /// so they have to survive. Only the path changes.
+    func relocate(_ project: Project, to folder: URL) async throws {
+        var moved = project
+        moved.folder = folder
+        try await update(moved)
+    }
+
+    /// Projects whose folder is no longer where it was registered.
+    func misplaced() -> [Project] {
+        projects.filter { !FolderCheck.check($0.folder).isUsable }
+    }
+
     func setEnabled(_ enabled: Bool, for project: Project) async throws {
         var changed = project
         changed.enabled = enabled
