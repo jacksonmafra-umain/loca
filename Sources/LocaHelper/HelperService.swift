@@ -70,13 +70,15 @@ final class HelperService: NSObject, LocaHelperProtocol {
 
     // MARK: - Certificate authority
 
-    func trustCertificateAuthority(reply: @escaping (Bool, String?) -> Void) {
-        reply(false, "the certificate authority arrives in milestone 2")
+    func certificateAuthorityRoot(reply: @escaping (Data?, String?) -> Void) {
+        do {
+            reply(try CATrust.rootCertificateDER(), nil)
+        } catch {
+            NSLog("loca: certificateAuthorityRoot failed: %@", String(describing: error))
+            reply(nil, error.localizedDescription)
+        }
     }
 
-    func certificateAuthorityIsTrusted(reply: @escaping (Bool) -> Void) {
-        reply(false)
-    }
 
     // MARK: - Diagnostics
 
@@ -93,6 +95,12 @@ final class HelperService: NSObject, LocaHelperProtocol {
             "resolverExists": NSNumber(value: resolver.exists),
             "resolverManagedByLoca": NSNumber(value: resolver.managedByLoca),
             "caddyRunning": NSNumber(value: caddy.isRunning),
+            // Whether the root is *trusted* is deliberately absent: user-domain
+            // trust settings are invisible to root, so any answer from here
+            // would be wrong. The app evaluates that itself.
+            "caRootIssued": NSNumber(
+                value: FileManager.default.fileExists(
+                    atPath: CATrust.rootCertificate().path(percentEncoded: false))),
         ]
 
         if let exit = caddy.lastExitStatus {
@@ -119,8 +127,22 @@ final class HelperService: NSObject, LocaHelperProtocol {
         dns.stop()
         caddy.stop()
 
+        // Each step is attempted even if an earlier one failed: a half-removed
+        // install is worse than a fully removed one with a reported problem.
+        //
+        // Certificate trust is not removed here — it lives in the user's
+        // keychain, which only the user's own session can change, so the app
+        // does that part.
         do {
             try SystemResolver.remove()
+        } catch {
+            problems.append(error.localizedDescription)
+        }
+
+        do {
+            try FileManager.default.removeItem(at: Paths.helperStateDirectory)
+        } catch CocoaError.fileNoSuchFile {
+            // Nothing to remove is a clean uninstall, not a problem.
         } catch {
             problems.append(error.localizedDescription)
         }

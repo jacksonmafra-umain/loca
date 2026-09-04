@@ -8,7 +8,14 @@ public let locaHelperMachServiceName = "dev.loca.helper"
 /// The app compares it against what the helper reports and says "reinstall the
 /// helper" rather than letting an updated app fail against a stale daemon in a
 /// way nobody can diagnose.
-public let locaHelperProtocolVersion = 1
+///
+/// 2: `trustCertificateAuthority` and `certificateAuthorityIsTrusted` replaced
+/// by `certificateAuthorityRoot`. The helper can neither install trust nor
+/// observe it: writing System keychain trust settings requires an authorization
+/// no daemon can obtain, and user-domain trust settings are invisible to root.
+/// So it hands over the root certificate and the app both installs and
+/// evaluates trust in the user's session.
+public let locaHelperProtocolVersion = 2
 
 /// Everything the app is allowed to ask of root.
 ///
@@ -30,9 +37,15 @@ public let locaHelperProtocolVersion = 1
     /// validated field by field before anything is generated or written.
     func applyDomains(_ payload: [[String: NSObject]], reply: @escaping (Bool, String?) -> Void)
 
-    func trustCertificateAuthority(reply: @escaping (Bool, String?) -> Void)
-
-    func certificateAuthorityIsTrusted(reply: @escaping (Bool) -> Void)
+    /// Hands over Caddy's internal root certificate in DER form, so the app can
+    /// install trust for it in the user's session.
+    ///
+    /// The helper cannot do this itself: writing trust settings to the System
+    /// keychain needs an authorization that no daemon can obtain, with or
+    /// without root. Exporting the certificate is safe — a root certificate is
+    /// public by definition, and the private key never leaves the helper's
+    /// storage.
+    func certificateAuthorityRoot(reply: @escaping (Data?, String?) -> Void)
 
     /// Helper version, DNS listener state, resolver state, who holds :80 and
     /// :443, whether Caddy is running, and whether the CA is trusted.

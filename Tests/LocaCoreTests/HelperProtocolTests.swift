@@ -167,7 +167,10 @@ struct HelperProtocolConstantsTests {
         #expect(locaHelperMachServiceName == Paths.helperLabel)
     }
 
-    @Test func theProtocolVersionIsSet() {
-        #expect(locaHelperProtocolVersion == 1)
+    /// Deliberately not pinned to a literal. The version is meant to change
+    /// whenever the protocol does, so asserting the current number would just
+    /// be a tripwire that fires on every intentional bump.
+    @Test func theProtocolVersionIsPositive() {
+        #expect(locaHelperProtocolVersion >= 1)
     }
 }

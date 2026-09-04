@@ -115,13 +115,44 @@ enum CommandLineMode {
         }
     }
 
+    /// Fetches the root from the helper, then trusts it here.
+    ///
+    /// macOS shows its authorization prompt during the second step, because
+    /// this process is in the user's session. That prompt is the point: the
+    /// helper cannot obtain the authorization at all.
     private static func trustCertificateAuthority() {
-        run("trust certificate authority") { proxy, finish in
-            proxy.trustCertificateAuthority { ok, detail in
-                finish(Reply(ok: ok, detail: detail))
+        struct Root: Sendable {
+            let der: Data?
+            let detail: String?
+        }
+
+        do {
+            let root: Root = try SyncHelperCall.call { proxy, finish in
+                proxy.certificateAuthorityRoot { der, detail in
+                    finish(Root(der: der, detail: detail))
+                }
             }
-        } onSuccess: { _ in
-            print("the Caddy root certificate is trusted in the System keychain")
+            guard let der = root.der else {
+                throw CertificateTrustError.noCertificate(root.detail ?? "no detail")
+            }
+
+            if CertificateTrust.isTrusted(rootCertificateDER: der) {
+                print("the Caddy root certificate is already trusted")
+                return
+            }
+
+            print("asking macOS to trust the Caddy root certificate; approve the prompt")
+            try CertificateTrust.install(rootCertificateDER: der)
+
+            guard CertificateTrust.isTrusted(rootCertificateDER: der) else {
+                throw CertificateTrustError.commandFailed(
+                    "the certificate was added but does not evaluate as trusted")
+            }
+            print("the Caddy root certificate is trusted for this user")
+        } catch {
+            FileHandle.standardError.write(
+                Data("trust failed: \(error.localizedDescription)\n".utf8))
+            exit(1)
         }
     }
 
