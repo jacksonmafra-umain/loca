@@ -21,8 +21,9 @@ struct LocaAppMain: App {
     var body: some Scene {
         Window("Loca", id: "main") {
             RootView(helper: helper, store: store)
-                .frame(minWidth: 640, minHeight: 480)
+                .frame(minWidth: 940, minHeight: 600)
         }
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
     }
 }
 
@@ -30,31 +31,16 @@ struct RootView: View {
     let helper: HelperClient
     let store: AppStore
 
-    /// Onboarding is shown until the gates are met, and can be reopened from
-    /// the toolbar afterwards — its warnings and diagnostics stay useful long
-    /// after first run.
-    @State private var showingSetup = false
+    @State private var section: Section = .domains
     @State private var checkedGates = false
 
     var body: some View {
-        NavigationStack {
-            ProjectListView(store: store, helper: helper)
-                .navigationTitle("Loca")
-                .toolbar {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            showingSetup = true
-                        } label: {
-                            Label("Setup", systemImage: "gearshape")
-                        }
-                        .help("Helper, resolver, and certificate status")
-                    }
-                }
+        HStack(spacing: 0) {
+            SidebarView(selection: $section, store: store, helper: helper)
+            content
         }
-        .sheet(isPresented: $showingSetup) {
-            OnboardingView(helper: helper, store: store) { showingSetup = false }
-                .frame(width: 640, height: 620)
-        }
+        .background(Theme.surface)
+        .ignoresSafeArea(.container, edges: .top)
         .task {
             store.load()
             await helper.refreshState()
@@ -63,15 +49,72 @@ struct RootView: View {
             checkedGates = true
 
             let diagnostics = await helper.diagnostics()
-            let ready =
-                helper.state == .installed && diagnostics["resolverManagedByLoca"] == "1"
+            let ready = helper.state == .installed && diagnostics["resolverManagedByLoca"] == "1"
             if ready {
                 // The proxy holds no state across a reboot, so the saved list
                 // is pushed again on every launch.
                 await store.resync()
             } else {
-                showingSetup = true
+                // Nothing else in the window can work until setup is done, so
+                // it opens there rather than showing a list that cannot serve.
+                section = .setup
             }
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch section {
+        case .domains:
+            ProjectListView(store: store, helper: helper)
+        case .inspector:
+            ComingSoonPane(
+                icon: "dot.radiowaves.left.and.right",
+                title: "Port Inspector",
+                detail:
+                    "A live list of every listening TCP port with the process that owns it, Docker containers resolved to their names, and the domain each port is mapped to."
+            )
+        case .setup:
+            OnboardingView(helper: helper, store: store) { section = .domains }
+        }
+    }
+}
+
+/// A pane for a section whose milestone has not landed yet.
+///
+/// Better than hiding the row: it says what is coming and keeps the navigation
+/// stable between releases.
+struct ComingSoonPane: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                Spacer()
+                Badge(text: "not in this release", tone: .neutral)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 22)
+            .padding(.bottom, 16)
+
+            VStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 30, weight: .light))
+                    .foregroundStyle(Theme.accentSoft)
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Theme.surface)
     }
 }

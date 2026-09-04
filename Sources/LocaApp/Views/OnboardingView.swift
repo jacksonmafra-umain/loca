@@ -1,12 +1,15 @@
 import LocaCore
 import SwiftUI
 
-/// First run: install the helper, install the resolver, trust the certificate
+/// Setup: install the helper, install the resolver, trust the certificate
 /// authority, and say the two things that otherwise read as bugs.
 ///
 /// Both warnings are here because the spec insists on them, and it is right to.
-/// Firefox ignoring the System keychain and a stale `.local` entry in
-/// `/etc/hosts` both produce symptoms that look exactly like Loca being broken.
+/// Firefox ignoring the macOS keychain and a stale `.local` entry in
+/// `/etc/hosts` produce symptoms that look exactly like Loca being broken.
+///
+/// It stays reachable after first run, because its diagnostics are the answer
+/// to "why is this not working?" at any point later.
 struct OnboardingView: View {
     let helper: HelperClient
     let store: AppStore
@@ -20,36 +23,76 @@ struct OnboardingView: View {
     @State private var error: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                title
-                helperStep
-                resolverStep
-                certificateStep
-                checks
-                Spacer(minLength: 0)
+        VStack(spacing: 0) {
+            header
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    helperStep
+                    resolverStep
+                    certificateStep
+                    if let error { errorCard(error) }
+                    notes
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
             }
-            .padding(28)
+            .scrollIndicators(.never)
+
+            footer
         }
+        .background(Theme.surface)
         .task { await refresh() }
     }
 
-    // MARK: - Sections
+    // MARK: - Chrome
 
-    private var title: some View {
+    private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Set up Loca")
-                .font(.largeTitle)
+            HStack {
+                Text("Setup")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                Spacer()
+                Badge(
+                    text: ready ? "ready" : "\(remainingSteps) step\(remainingSteps == 1 ? "" : "s") left",
+                    tone: ready ? .good : .accent)
+            }
             Text(
                 "Three steps, once. Loca needs a privileged helper to bind ports 80 and 443, a resolver entry so .test names reach it, and your trust for the certificate authority it issues from."
             )
-            .foregroundStyle(.secondary)
+            .font(.system(size: 12))
+            .foregroundStyle(Theme.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 22)
+        .padding(.bottom, 16)
     }
 
+    private var footer: some View {
+        HStack {
+            Text(ready ? "Everything Loca needs is in place" : "Finish the steps above to serve domains")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textTertiary)
+            Spacer()
+            Button("Refresh") { Task { await refresh() } }
+                .buttonStyle(.quiet)
+            Button("Done") { onDone() }
+                .buttonStyle(.accent)
+                .disabled(!ready)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(Theme.sidebar.opacity(0.6))
+        .overlay(alignment: .top) { Divider().overlay(Theme.stroke) }
+    }
+
+    // MARK: - Steps
+
     private var helperStep: some View {
-        Step(
+        StepCard(
             number: 1,
             title: "Install the privileged helper",
             detail: helperDetail,
@@ -58,17 +101,21 @@ struct OnboardingView: View {
             switch helper.state {
             case .requiresApproval:
                 Button("Open Login Items") { helper.openLoginItemsSettings() }
+                    .buttonStyle(.accent)
                 Button("Check again") { Task { await refresh() } }
+                    .buttonStyle(.quiet)
             case .installed:
                 Button("Reinstall") { install() }
+                    .buttonStyle(.quiet)
             default:
                 Button("Install") { install() }
+                    .buttonStyle(.accent)
             }
         }
     }
 
     private var resolverStep: some View {
-        Step(
+        StepCard(
             number: 2,
             title: "Point .test at Loca",
             detail: resolverDetail,
@@ -77,38 +124,32 @@ struct OnboardingView: View {
             Button(resolverInstalled ? "Reinstall" : "Install") {
                 Task { await installResolver() }
             }
+            .buttonStyle(resolverInstalled ? AnyButtonStyle(.quiet) : AnyButtonStyle(.accent))
             .disabled(helper.state != .installed || busy)
         }
     }
 
     private var certificateStep: some View {
-        Step(
+        StepCard(
             number: 3,
             title: "Trust the certificate authority",
-            detail:
-                caTrusted
-                ? "Trusted for your user account. Certificates are issued locally; nothing leaves this machine."
-                : "Loca issues certificates from a local authority. macOS will ask you to approve it — once. Trust is added for your user account only, not machine-wide.",
+            detail: certificateDetail,
             state: caTrusted ? .done : .pending
         ) {
             Button(caTrusted ? "Re-trust" : "Trust") { Task { await trust() } }
+                .buttonStyle(caTrusted ? AnyButtonStyle(.quiet) : AnyButtonStyle(.accent))
                 .disabled(helper.state != .installed || busy)
         }
     }
 
-    private var checks: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Divider()
+    // MARK: - Notes
 
-            if let error {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
+    private var notes: some View {
+        VStack(alignment: .leading, spacing: 12) {
             if let backup = resolverBackup {
-                Note(
+                NoteCard(
                     icon: "arrow.down.doc",
+                    tone: Theme.accentSoft,
                     title: "An existing resolver entry was backed up",
                     message:
                         "Loca found an /etc/resolver/test it did not write and copied it to \(backup) before replacing it. Nothing was lost."
@@ -116,8 +157,9 @@ struct OnboardingView: View {
             }
 
             if let owner = foreignPortOwner {
-                Note(
+                NoteCard(
                     icon: "exclamationmark.triangle",
+                    tone: Theme.danger,
                     title: "Something else is using a port Loca needs",
                     message:
                         "\(owner) currently holds it. Loca cannot serve HTTPS until that process releases port 80 or 443."
@@ -126,32 +168,47 @@ struct OnboardingView: View {
 
             // Firefox keeps its own trust store, so this reads as an app bug
             // unless it is said out loud.
-            Note(
+            NoteCard(
                 icon: "globe",
+                tone: Theme.accentSoft,
                 title: "Firefox needs one extra setting",
                 message:
                     "Firefox does not use the macOS keychain. Open about:config and set security.enterprise_roots.enabled to true, or .test sites will show a certificate warning there while working everywhere else."
             )
 
             if !hostsLocalEntries.isEmpty {
-                Note(
+                NoteCard(
                     icon: "doc.text",
+                    tone: Theme.accentSoft,
                     title: "You have .local entries in /etc/hosts",
                     message:
-                        "\(hostsLocalEntries.joined(separator: ", ")). Loca will not touch them. Worth knowing that .local collides with mDNS and gives you no HTTPS, which is what .test avoids."
+                        "\(hostsLocalEntries.joined(separator: ", ")). Loca will not touch them. Worth knowing that .local collides with mDNS and gives you no HTTPS, which is exactly what .test avoids."
                 )
-            }
-
-            HStack {
-                Spacer()
-                Button("Done") { onDone() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(helper.state != .installed || !resolverInstalled)
             }
         }
     }
 
+    private func errorCard(_ message: String) -> some View {
+        NoteCard(
+            icon: "exclamationmark.octagon",
+            tone: Theme.danger,
+            title: "That did not work",
+            message: message)
+    }
+
     // MARK: - Derived
+
+    private var ready: Bool {
+        helper.state == .installed && resolverInstalled
+    }
+
+    private var remainingSteps: Int {
+        var remaining = 0
+        if helper.state != .installed { remaining += 1 }
+        if !resolverInstalled { remaining += 1 }
+        if !caTrusted { remaining += 1 }
+        return remaining
+    }
 
     private var helperState: StepState {
         switch helper.state {
@@ -180,6 +237,12 @@ struct OnboardingView: View {
         resolverInstalled
             ? "/etc/resolver/test is in place, so every .test name resolves to this machine — including subdomains, at any depth."
             : "Loca writes /etc/resolver/test so macOS sends .test lookups to it. An existing file it did not write is backed up, never overwritten."
+    }
+
+    private var certificateDetail: String {
+        caTrusted
+            ? "Trusted for your user account. Certificates are issued locally; nothing leaves this machine."
+            : "Loca issues certificates from a local authority. macOS will ask you to approve it — once. Trust is added for your user account only, not machine-wide."
     }
 
     private var resolverInstalled: Bool {
@@ -236,13 +299,11 @@ struct OnboardingView: View {
 
 // MARK: - Pieces
 
-/// Outside `Step` so callers can name it without spelling out `Step`'s generic
-/// parameter.
-private enum StepState {
+enum StepState {
     case pending, waiting, done
 }
 
-private struct Step<Actions: View>: View {
+private struct StepCard<Actions: View>: View {
     let number: Int
     let title: String
     let detail: String
@@ -250,15 +311,21 @@ private struct Step<Actions: View>: View {
     @ViewBuilder var actions: Actions
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            marker
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.headline)
-                Text(detail)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack { actions }
-                    .padding(.top, 2)
+        Card {
+            HStack(alignment: .top, spacing: 14) {
+                marker
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                    Text(detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) { actions }
+                        .padding(.top, 4)
+                }
             }
         }
     }
@@ -267,37 +334,66 @@ private struct Step<Actions: View>: View {
         Group {
             switch state {
             case .done:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.onAccent)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Theme.running))
             case .waiting:
-                Image(systemName: "clock.fill").foregroundStyle(.orange)
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.onAccent)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Theme.accentSoft))
             case .pending:
                 Text("\(number)")
-                    .font(.callout.weight(.semibold))
-                    .frame(width: 20, height: 20)
-                    .background(Circle().fill(.quaternary))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Theme.accent.opacity(0.16)))
             }
         }
-        .font(.title3)
-        .frame(width: 24)
     }
 }
 
-private struct Note: View {
+private struct NoteCard: View {
     let icon: String
+    let tone: Color
     let title: String
     let message: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.callout.weight(.medium))
-                Text(message)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        Card(padding: 14) {
+            HStack(alignment: .top, spacing: 11) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                    .foregroundStyle(tone)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.text)
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
+    }
+}
+
+/// Lets a `?:` pick between two button styles, which SwiftUI's generic
+/// `buttonStyle(_:)` otherwise refuses.
+struct AnyButtonStyle: ButtonStyle {
+    private let make: (Configuration) -> AnyView
+
+    init<S: ButtonStyle>(_ style: S) {
+        make = { configuration in AnyView(style.makeBody(configuration: configuration)) }
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        make(configuration)
     }
 }
 
