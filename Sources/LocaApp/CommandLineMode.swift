@@ -29,6 +29,80 @@ enum CommandLineMode {
             printBundleInfo()
             exit(0)
         }
+        if arguments.contains("--install-resolver") {
+            installResolver()
+            exit(0)
+        }
+        if arguments.contains("--remove-resolver") {
+            removeResolver()
+            exit(0)
+        }
+        if arguments.contains("--diagnostics") {
+            printDiagnostics()
+            exit(0)
+        }
+    }
+
+    // MARK: - Helper operations
+
+    private static func installResolver() {
+        run("install resolver") { proxy, finish in
+            proxy.installDNSResolver { ok, detail in finish(Reply(ok: ok, detail: detail)) }
+        } onSuccess: { detail in
+            if let detail {
+                print("installed \(Paths.resolverFile.path()) (backed up an existing file to \(detail))")
+            } else {
+                print("installed \(Paths.resolverFile.path())")
+            }
+        }
+    }
+
+    private static func removeResolver() {
+        run("remove resolver") { proxy, finish in
+            proxy.removeDNSResolver { ok, detail in finish(Reply(ok: ok, detail: detail)) }
+        } onSuccess: { _ in
+            print("removed \(Paths.resolverFile.path())")
+        }
+    }
+
+    private static func printDiagnostics() {
+        do {
+            let report: [String: String] = try SyncHelperCall.call { proxy, finish in
+                proxy.diagnostics { raw in finish(raw.mapValues { String(describing: $0) }) }
+            }
+            for key in report.keys.sorted() {
+                print("\(key): \(report[key] ?? "")")
+            }
+        } catch {
+            FileHandle.standardError.write(
+                Data("diagnostics failed: \(error.localizedDescription)\n".utf8))
+            exit(1)
+        }
+    }
+
+    private struct Reply: Sendable {
+        let ok: Bool
+        let detail: String?
+    }
+
+    private static func run(
+        _ label: String,
+        _ body: (any LocaHelperProtocol, @escaping @Sendable (Reply) -> Void) -> Void,
+        onSuccess: (String?) -> Void
+    ) {
+        do {
+            let reply: Reply = try SyncHelperCall.call(body)
+            guard reply.ok else {
+                FileHandle.standardError.write(
+                    Data("\(label) failed: \(reply.detail ?? "no detail")\n".utf8))
+                exit(1)
+            }
+            onSuccess(reply.detail)
+        } catch {
+            FileHandle.standardError.write(
+                Data("\(label) failed: \(error.localizedDescription)\n".utf8))
+            exit(1)
+        }
     }
 
     /// Prints which bundle `SMAppService` is looking at and what it contains.
