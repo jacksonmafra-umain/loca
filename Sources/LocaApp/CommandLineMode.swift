@@ -61,6 +61,10 @@ enum CommandLineMode {
             printListeningPorts()
             exit(0)
         }
+        if arguments.contains("--uninstall") {
+            uninstall()
+            exit(0)
+        }
         if let slug = value(of: "--runner-status", in: CommandLine.arguments) {
             runner(slug) { project in
                 let status = RunnerAgent.status(for: project)
@@ -73,6 +77,84 @@ enum CommandLineMode {
                 if let runs = status.runs { print("runs: \(runs)") }
             }
             exit(0)
+        }
+    }
+
+    // MARK: - Uninstall
+
+    /// Reverses everything Loca installed, in the order that leaves the least
+    /// behind if a step fails.
+    ///
+    /// Every step is attempted even after an earlier one fails, and each is
+    /// reported. A half-removed install is worse than a fully removed one with
+    /// a complaint attached.
+    ///
+    /// The project folders, and anything in them, are never touched.
+    private static func uninstall() {
+        let paths = Paths()
+        var problems: [String] = []
+
+        // Runners first: an agent left loaded would keep a server running with
+        // nothing left to stop it.
+        let projects = (try? ConfigStore(paths: paths).load().projects) ?? []
+        for project in projects where project.runner != nil {
+            RunnerAgent.remove(project, paths: paths)
+            print("removed runner agent \(project.agentLabel)")
+        }
+
+        // Certificate trust lives in the user's keychain, so only this session
+        // can remove it — the helper cannot, which is the same reason it could
+        // not install it.
+        do {
+            if let der = try SyncHelperCall.call({ proxy, finish in
+                proxy.certificateAuthorityRoot { der, _ in finish(der) }
+            }) as Data? {
+                try CertificateTrust.remove(rootCertificateDER: der)
+                print("removed certificate trust")
+            }
+        } catch {
+            problems.append("certificate trust: \(error.localizedDescription)")
+        }
+
+        // Then the helper's own state: resolver file, Caddy, state directory.
+        do {
+            let reply: Reply = try SyncHelperCall.call { proxy, finish in
+                proxy.uninstall { ok, detail in finish(Reply(ok: ok, detail: detail)) }
+            }
+            if reply.ok {
+                print("removed the resolver entry and the helper's state")
+            } else {
+                problems.append("helper cleanup: \(reply.detail ?? "no detail")")
+            }
+        } catch {
+            problems.append("helper cleanup: \(error.localizedDescription)")
+        }
+
+        // The daemon last, since the steps above need it alive.
+        let daemon = SMAppService.daemon(plistName: "\(Paths.helperLabel).plist")
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = Box()
+        Task {
+            do { try await daemon.unregister() } catch { box.failure = error }
+            semaphore.signal()
+        }
+        semaphore.wait()
+        if let failure = box.failure {
+            problems.append("unregister helper: \(failure.localizedDescription)")
+        } else {
+            print("unregistered \(Paths.helperLabel)")
+        }
+
+        print("")
+        print("Left in place, deliberately:")
+        print("  \(paths.configFile.path(percentEncoded: false))  (your domains)")
+        print("  \(paths.logDirectory.path(percentEncoded: false))  (runner logs)")
+        print("  your project folders, untouched")
+
+        guard problems.isEmpty else {
+            let message = "\nsome steps failed:\n  " + problems.joined(separator: "\n  ") + "\n"
+            FileHandle.standardError.write(Data(message.utf8))
+            exit(1)
         }
     }
 

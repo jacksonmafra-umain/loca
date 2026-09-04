@@ -48,6 +48,7 @@ help:
 	@echo "make install           copy the app to /Applications and launch it"
 	@echo "make run               launch the app from $(BUILD_DIR)"
 	@echo "make reinstall-helper  bootout and reload the helper after a rebuild"
+	@echo "make uninstall         reverse everything Loca installed"
 	@echo "make identity          show the signing identity that will be used"
 	@echo "make clean             remove $(BUILD_DIR) and .build"
 
@@ -137,6 +138,23 @@ install: app
 reinstall-helper: app
 	-sudo launchctl bootout system/$(HELPER_LABEL) 2>/dev/null
 	@echo "helper booted out. Relaunch the app and re-register it to load the new build."
+
+# Reverses everything Loca installed, and nothing else. Project folders, the
+# saved domain list, and the runner logs are left alone — see the app's own
+# output for what stays and why.
+.PHONY: uninstall
+uninstall:
+	@if [ -x "/Applications/$(APP_NAME).app/Contents/MacOS/$(APP_BINARY)" ]; then \
+		"/Applications/$(APP_NAME).app/Contents/MacOS/$(APP_BINARY)" --uninstall; \
+	elif [ -x "$(CONTENTS)/MacOS/$(APP_BINARY)" ]; then \
+		"$(CONTENTS)/MacOS/$(APP_BINARY)" --uninstall; \
+	else \
+		echo "error: no built or installed app to uninstall from."; \
+		echo "       Run 'make app' first, or remove /Applications/$(APP_NAME).app by hand."; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "The app itself is still in /Applications. Drag it to the Trash to finish."
 
 .PHONY: clean
 clean:
