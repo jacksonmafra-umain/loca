@@ -11,6 +11,9 @@ import SwiftUI
 struct AddProjectSheet: View {
     let folder: URL
     let store: AppStore
+    /// Set when the sheet was opened from the inspector, which already knows
+    /// the port and should not have it guessed over.
+    var initialPort: Int?
     var onFinished: () -> Void
 
     @State private var slug = ""
@@ -249,7 +252,9 @@ struct AddProjectSheet: View {
     private func prepare() {
         detection = ProjectDetector.detect(folder: folder)
         slug = store.suggestedSlug(for: folder)
-        port = detection.port.map(String.init) ?? ""
+        // A port the user picked from the inspector is a fact, not a guess, so
+        // it wins over detection.
+        port = (initialPort ?? detection.port).map(String.init) ?? ""
         command = detection.command ?? ""
         useRunner = detection.command != nil
         refreshPortOwner()

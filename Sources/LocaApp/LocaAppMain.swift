@@ -35,6 +35,9 @@ struct RootView: View {
 
     @State private var section: Section = .domains
     @State private var checkedGates = false
+    @State private var inspector: InspectorController?
+    /// A port the inspector handed to the domains pane.
+    @State private var pendingPort: Int?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -46,6 +49,12 @@ struct RootView: View {
         .task {
             store.load()
             await helper.refreshState()
+
+            // Built here rather than as a stored property because it needs to
+            // ask the store for a port's domain, and the store is injected.
+            if inspector == nil {
+                inspector = InspectorController { port in store.domain(forPort: port) }
+            }
 
             guard !checkedGates else { return }
             checkedGates = true
@@ -68,14 +77,19 @@ struct RootView: View {
     private var content: some View {
         switch section {
         case .domains:
-            ProjectListView(store: store, helper: helper, runners: runners)
+            ProjectListView(
+                store: store, helper: helper, runners: runners, pendingPort: $pendingPort)
         case .inspector:
-            ComingSoonPane(
-                icon: "dot.radiowaves.left.and.right",
-                title: "Port Inspector",
-                detail:
-                    "A live list of every listening TCP port with the process that owns it, Docker containers resolved to their names, and the domain each port is mapped to."
-            )
+            if let inspector {
+                InspectorView(inspector: inspector, store: store) { port in
+                    // The inspector knows the port; the domains pane asks for
+                    // the folder.
+                    pendingPort = port
+                    section = .domains
+                }
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         case .setup:
             OnboardingView(helper: helper, store: store) { section = .domains }
         }
