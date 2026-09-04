@@ -25,6 +25,15 @@ CADDY_VERSION := 2.11.4
 CADDY_SHA256_arm64 := 9efb0af2d6cf09cfb5053c0e51721b9b3d4956d346234f39368d943d25a3c9a7
 CADDY_SHA256_amd64 := 34bc9e5cceee8d67844ef51da624f5b79e8d070f27236e050c3f0066a2dba534
 
+VERSION := $(shell /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
+DMG := $(BUILD_DIR)/$(APP_NAME)-$(VERSION).dmg
+DMG_STAGING := $(BUILD_DIR)/dmg
+
+# The keychain profile `notarytool` stores credentials under. Create it once:
+#   xcrun notarytool store-credentials loca-notary \
+#     --apple-id <you@example.com> --team-id <TEAMID> --password <app-specific>
+NOTARY_PROFILE ?= loca-notary
+
 CADDY_ARCH := $(if $(filter arm64,$(shell uname -m)),arm64,amd64)
 CADDY_SHA256 := $(CADDY_SHA256_$(CADDY_ARCH))
 CADDY_TARBALL := caddy_$(CADDY_VERSION)_mac_$(CADDY_ARCH).tar.gz
@@ -48,6 +57,10 @@ help:
 	@echo "make app               assemble and sign $(APP)"
 	@echo "make install           copy the app to /Applications and launch it"
 	@echo "make run               launch the app from $(BUILD_DIR)"
+	@echo "make dmg               package $(APP_NAME)-$(VERSION).dmg"
+	@echo "make notarize          submit the DMG to Apple and staple the ticket"
+	@echo "make release           vendor, check, and package in one go"
+	@echo "make signing-report    what this machine's certificate allows"
 	@echo "make reinstall-helper  bootout and reload the helper after a rebuild"
 	@echo "make uninstall         reverse everything Loca installed"
 	@echo "make identity          show the signing identity that will be used"
@@ -134,6 +147,74 @@ app: build $(CADDY)
 .PHONY: run
 run: app
 	open "$(APP)"
+
+# MARK: - Distribution
+#
+# Everything below works today except notarization, which needs a "Developer ID
+# Application" certificate — a paid Apple Developer Program membership. A build
+# signed with an "Apple Development" certificate runs on the machine that built
+# it and is refused by Gatekeeper anywhere else, so a DMG made from one is for
+# your own machines, not for handing out.
+
+.PHONY: signing-report
+signing-report:
+	@echo "identity:      $(SIGN_ID)"
+	@if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then \
+		echo "distribution:  Developer ID found — notarization is possible"; \
+	else \
+		echo "distribution:  NOT possible — no 'Developer ID Application' certificate."; \
+		echo "               An 'Apple Development' certificate signs a build that runs"; \
+		echo "               here and is refused by Gatekeeper on any other Mac."; \
+		echo "               Getting one needs a paid Apple Developer Program membership."; \
+	fi
+
+$(DMG): app
+	rm -rf "$(DMG_STAGING)" "$(DMG)"
+	mkdir -p "$(DMG_STAGING)"
+	cp -R "$(APP)" "$(DMG_STAGING)/"
+	@# The conventional drag-to-install layout: the app beside a shortcut to
+	@# where it has to end up. Loca genuinely requires /Applications —
+	@# SMAppService will not register a root daemon from a user-writable
+	@# folder — so this is not decoration.
+	ln -s /Applications "$(DMG_STAGING)/Applications"
+	hdiutil create -volname "$(APP_NAME)" -srcfolder "$(DMG_STAGING)" \
+		-ov -format UDZO "$(DMG)"
+	rm -rf "$(DMG_STAGING)"
+	@echo "built $(DMG)"
+
+.PHONY: dmg
+dmg: $(DMG)
+	@$(MAKE) --no-print-directory signing-report
+
+# Submits the DMG to Apple and staples the ticket to it, so it opens on a Mac
+# that has never seen it before without a Gatekeeper warning.
+.PHONY: notarize
+notarize: dmg
+	@if ! security find-identity -v -p codesigning | grep -q "Developer ID Application"; then \
+		echo "error: notarization needs a 'Developer ID Application' certificate."; \
+		echo "       This machine has none, so Apple would reject the submission."; \
+		echo "       See the Distribution page in the wiki."; \
+		exit 1; \
+	fi
+	@if ! xcrun notarytool history --keychain-profile "$(NOTARY_PROFILE)" >/dev/null 2>&1; then \
+		echo "error: no notarytool credentials under the profile '$(NOTARY_PROFILE)'."; \
+		echo "       Store them once with:"; \
+		echo "         xcrun notarytool store-credentials $(NOTARY_PROFILE) \\"; \
+		echo "           --apple-id <you@example.com> --team-id <TEAMID> \\"; \
+		echo "           --password <app-specific-password>"; \
+		exit 1; \
+	fi
+	xcrun notarytool submit "$(DMG)" --keychain-profile "$(NOTARY_PROFILE)" --wait
+	xcrun stapler staple "$(DMG)"
+	xcrun stapler validate "$(DMG)"
+	@echo "notarized and stapled $(DMG)"
+
+# What a release actually is, in one command.
+.PHONY: release
+release: vendor-caddy check dmg
+	@echo ""
+	@echo "release candidate: $(DMG)"
+	@echo "run 'make notarize' before handing it to anyone else."
 
 .PHONY: install
 install: app

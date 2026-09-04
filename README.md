@@ -65,6 +65,7 @@ ports resolved to their container name — under `lsof` they all read
 | [Troubleshooting](https://github.com/jacksonmafra-umain/loca/wiki/Troubleshooting) | Every failure mode, with the symptom you would see |
 | [Command line](https://github.com/jacksonmafra-umain/loca/wiki/Command-line) | Every flag on the app binary |
 | [Architecture](https://github.com/jacksonmafra-umain/loca/wiki/Architecture) | How it is built, and why |
+| [Distribution](https://github.com/jacksonmafra-umain/loca/wiki/Distribution) | Packaging, notarization, and why there is no download |
 | [Uninstalling](https://github.com/jacksonmafra-umain/loca/wiki/Uninstalling) | What is removed, and what is deliberately kept |
 
 ## Development
