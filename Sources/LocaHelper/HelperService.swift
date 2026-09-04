@@ -10,10 +10,12 @@ import LocaCore
 final class HelperService: NSObject, LocaHelperProtocol {
     private let buildDescription: String
     private let dns: DNSListener
+    private let caddy: CaddySupervisor
 
-    init(buildDescription: String, dns: DNSListener) {
+    init(buildDescription: String, dns: DNSListener, caddy: CaddySupervisor) {
         self.buildDescription = buildDescription
         self.dns = dns
+        self.caddy = caddy
     }
 
     func helperVersion(reply: @escaping (Int, String) -> Void) {
@@ -47,25 +49,36 @@ final class HelperService: NSObject, LocaHelperProtocol {
     func applyDomains(_ payload: [[String: NSObject]], reply: @escaping (Bool, String?) -> Void) {
         // Validate first, always. This is the only path by which configuration
         // reaches root.
+        let projects: [Project]
         do {
-            let projects = try DomainPayload.decode(payload)
-            NSLog("loca: applyDomains accepted %d project(s)", projects.count)
-            reply(false, "the proxy arrives in milestone 2")
+            projects = try DomainPayload.decode(payload)
         } catch {
             NSLog("loca: applyDomains rejected: %@", String(describing: error))
             reply(false, "invalid domain payload: \(error)")
+            return
+        }
+
+        do {
+            try caddy.apply(projects: projects)
+            NSLog("loca: applied %d domain(s)", projects.filter(\.enabled).count)
+            reply(true, nil)
+        } catch {
+            NSLog("loca: applyDomains failed: %@", String(describing: error))
+            reply(false, error.localizedDescription)
         }
     }
 
     // MARK: - Certificate authority
 
-    func trustCertificateAuthority(reply: @escaping (Bool, String?) -> Void) {
-        reply(false, "the certificate authority arrives in milestone 2")
+    func certificateAuthorityRoot(reply: @escaping (Data?, String?) -> Void) {
+        do {
+            reply(try CATrust.rootCertificateDER(), nil)
+        } catch {
+            NSLog("loca: certificateAuthorityRoot failed: %@", String(describing: error))
+            reply(nil, error.localizedDescription)
+        }
     }
 
-    func certificateAuthorityIsTrusted(reply: @escaping (Bool) -> Void) {
-        reply(false)
-    }
 
     // MARK: - Diagnostics
 
@@ -81,7 +94,18 @@ final class HelperService: NSObject, LocaHelperProtocol {
             "dnsListening": NSNumber(value: PortProbe.owner(ofPort: Int(Paths.dnsPort)) != nil),
             "resolverExists": NSNumber(value: resolver.exists),
             "resolverManagedByLoca": NSNumber(value: resolver.managedByLoca),
+            "caddyRunning": NSNumber(value: caddy.isRunning),
+            // Whether the root is *trusted* is deliberately absent: user-domain
+            // trust settings are invisible to root, so any answer from here
+            // would be wrong. The app evaluates that itself.
+            "caRootIssued": NSNumber(
+                value: FileManager.default.fileExists(
+                    atPath: CATrust.rootCertificate().path(percentEncoded: false))),
         ]
+
+        if let exit = caddy.lastExitStatus {
+            report["caddyLastExitStatus"] = NSNumber(value: exit)
+        }
 
         // Named owners, not a boolean. "Something is on 443" sends the user
         // hunting; "nginx (pid 812) is on 443" ends the search.
@@ -101,9 +125,24 @@ final class HelperService: NSObject, LocaHelperProtocol {
         var problems: [String] = []
 
         dns.stop()
+        caddy.stop()
 
+        // Each step is attempted even if an earlier one failed: a half-removed
+        // install is worse than a fully removed one with a reported problem.
+        //
+        // Certificate trust is not removed here — it lives in the user's
+        // keychain, which only the user's own session can change, so the app
+        // does that part.
         do {
             try SystemResolver.remove()
+        } catch {
+            problems.append(error.localizedDescription)
+        }
+
+        do {
+            try FileManager.default.removeItem(at: Paths.helperStateDirectory)
+        } catch CocoaError.fileNoSuchFile {
+            // Nothing to remove is a clean uninstall, not a problem.
         } catch {
             problems.append(error.localizedDescription)
         }
