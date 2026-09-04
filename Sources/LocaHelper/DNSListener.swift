@@ -60,13 +60,19 @@ final class DNSListener: @unchecked Sendable {
         guard !stopped else { return }
 
         let parameters = NWParameters.udp
-        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: port)
+        // The port has to be passed to the initializer. requiredLocalEndpoint
+        // does not bind a listener's port — set on its own it leaves the
+        // listener on an ephemeral port while every log line still reports the
+        // port that was asked for, which is a failure that looks like success.
+        parameters.requiredInterfaceType = .loopback
         parameters.allowLocalEndpointReuse = true
 
         do {
-            let listener = try NWListener(using: parameters)
+            let listener = try NWListener(using: parameters, on: port)
             listener.stateUpdateHandler = { [self] state in
-                handleState(state, transport: "udp") { self.startUDP() }
+                handleState(state, transport: "udp", boundPort: listener.port) {
+                    self.startUDP()
+                }
             }
             listener.newConnectionHandler = { [self] connection in
                 serveUDP(connection)
@@ -84,15 +90,29 @@ final class DNSListener: @unchecked Sendable {
         // One datagram per flow. A resolver that asks again gets a new flow, so
         // there is nothing to keep alive here.
         connection.receiveMessage { [self] data, _, _, error in
-            defer { connection.cancel() }
-
             if let error {
                 NSLog("loca: dns udp receive failed: %@", String(describing: error))
+                connection.cancel()
                 return
             }
-            guard let data, let response = answer(to: data) else { return }
+            guard let data, let response = answer(to: data) else {
+                connection.cancel()
+                return
+            }
 
-            connection.send(content: response, completion: .idempotent)
+            // Cancel only once the datagram has actually been handed to the
+            // stack. Sending with `.idempotent` and cancelling straight
+            // afterwards drops the reply — the send is asynchronous, so the
+            // flow disappears from under it. That failure is invisible: the
+            // listener reports ready, TCP works, and UDP queries just time out.
+            connection.send(
+                content: response,
+                completion: .contentProcessed { sendError in
+                    if let sendError {
+                        NSLog("loca: dns udp send failed: %@", String(describing: sendError))
+                    }
+                    connection.cancel()
+                })
         }
     }
 
@@ -102,13 +122,15 @@ final class DNSListener: @unchecked Sendable {
         guard !stopped else { return }
 
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: port)
+        parameters.requiredInterfaceType = .loopback
         parameters.allowLocalEndpointReuse = true
 
         do {
-            let listener = try NWListener(using: parameters)
+            let listener = try NWListener(using: parameters, on: port)
             listener.stateUpdateHandler = { [self] state in
-                handleState(state, transport: "tcp") { self.startTCP() }
+                handleState(state, transport: "tcp", boundPort: listener.port) {
+                    self.startTCP()
+                }
             }
             listener.newConnectionHandler = { [self] connection in
                 connection.start(queue: queue)
@@ -177,11 +199,19 @@ final class DNSListener: @unchecked Sendable {
     // MARK: - Lifecycle
 
     private func handleState(
-        _ state: NWListener.State, transport: String, restart: @escaping @Sendable () -> Void
+        _ state: NWListener.State,
+        transport: String,
+        boundPort: NWEndpoint.Port?,
+        restart: @escaping @Sendable () -> Void
     ) {
         switch state {
         case .ready:
-            NSLog("loca: dns %@ listening on 127.0.0.1:%d", transport, Int(port.rawValue))
+            // The port actually bound, not the one requested. Logging the
+            // request instead hid a listener sitting on an ephemeral port
+            // behind a line that read exactly right.
+            NSLog(
+                "loca: dns %@ listening on loopback:%d", transport,
+                Int(boundPort?.rawValue ?? 0))
             resetBackoff(transport: transport)
         case .failed(let error):
             NSLog("loca: dns %@ listener failed: %@", transport, String(describing: error))
