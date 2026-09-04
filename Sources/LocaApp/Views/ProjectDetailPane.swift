@@ -20,6 +20,7 @@ struct ProjectDetailPane: View {
             if let project {
                 VStack(alignment: .leading, spacing: 12) {
                     identity(project)
+                    missingFolder(project)
                     if project.runner != nil {
                         runnerCard(project)
                         if runners.unstable.contains(project.id) {
@@ -82,6 +83,82 @@ struct ProjectDetailPane: View {
                     Button("Remove") { onRemove(project) }
                         .buttonStyle(.quiet)
                 }
+            }
+        }
+    }
+
+    // MARK: - Missing folder
+
+    /// The folder moved or was deleted.
+    ///
+    /// The domain keeps working — the proxy only needs a port — so this is not
+    /// an emergency, but the runner cannot start and nothing else in the window
+    /// would say why.
+    @ViewBuilder
+    private func missingFolder(_ project: Project) -> some View {
+        if let problem = FolderCheck.problem(with: project.folder) {
+            Card(padding: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "questionmark.folder")
+                            .foregroundStyle(Theme.danger)
+                        Text("The folder is gone")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.text)
+                    }
+
+                    Text(problem)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.textSecondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(
+                        "The domain still works, since the proxy only needs the port. The runner cannot start until this is pointed somewhere that exists."
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        // Only offer relocation when the path is genuinely
+                        // absent. A file sitting where the folder was is a
+                        // different problem, and moving the registration would
+                        // paper over it.
+                        if FolderCheck.check(project.folder) == .missing {
+                            Button("Locate…") { relocate(project) }
+                                .buttonStyle(.accent)
+                        }
+                        Button("Remove domain") { onRemove(project) }
+                            .buttonStyle(.quiet)
+                    }
+                }
+            }
+        }
+    }
+
+    private func relocate(_ project: Project) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Use this folder"
+        panel.message = "Where is \(project.domain) now?"
+
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+
+        Task {
+            do {
+                try await store.relocate(project, to: folder)
+                runnerError = nil
+                // The plist carries the working directory, so an agent that
+                // already exists has to be rewritten before it would use the
+                // new path.
+                if runners.status(for: project).state != .notLoaded {
+                    try runners.start(store.projects.first { $0.id == project.id } ?? project)
+                }
+            } catch {
+                runnerError = error.localizedDescription
             }
         }
     }
