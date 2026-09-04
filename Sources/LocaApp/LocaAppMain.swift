@@ -5,6 +5,7 @@ import SwiftUI
 struct LocaAppMain: App {
     @State private var helper: HelperClient
     @State private var store: AppStore
+    @State private var runners = RunnerController()
 
     /// `SMAppService` can only be called from inside the signed bundle, so
     /// registering the helper has to go through this binary. Handling a couple
@@ -20,8 +21,8 @@ struct LocaAppMain: App {
 
     var body: some Scene {
         Window("Loca", id: "main") {
-            RootView(helper: helper, store: store)
-                .frame(minWidth: 940, minHeight: 600)
+            RootView(helper: helper, store: store, runners: runners)
+                .frame(minWidth: 960, minHeight: 640)
         }
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
     }
@@ -30,6 +31,7 @@ struct LocaAppMain: App {
 struct RootView: View {
     let helper: HelperClient
     let store: AppStore
+    let runners: RunnerController
 
     @State private var section: Section = .domains
     @State private var checkedGates = false
@@ -66,7 +68,7 @@ struct RootView: View {
     private var content: some View {
         switch section {
         case .domains:
-            ProjectListView(store: store, helper: helper)
+            ProjectListView(store: store, helper: helper, runners: runners)
         case .inspector:
             ComingSoonPane(
                 icon: "dot.radiowaves.left.and.right",

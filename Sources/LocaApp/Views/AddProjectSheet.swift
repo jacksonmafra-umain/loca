@@ -195,6 +195,25 @@ struct AddProjectSheet: View {
                     Text("The command runs through a login shell, so nvm and PATH resolve.")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textTertiary)
+
+                    if let guarded = ProtectedFolder.guardedLocation(of: folder) {
+                        // A launchd agent has no window to show a consent
+                        // prompt in, so macOS never asks and never grants. The
+                        // symptom is a getcwd failure in the log and a server
+                        // that may or may not limp along — invisible unless it
+                        // is said here.
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.accentSoft)
+                            Text(
+                                "This folder is inside \(guarded), which macOS protects. Background agents cannot get access there, so the runner may fail. Proxying the port is unaffected."
+                            )
+                            .foregroundStyle(Theme.accentSoft)
+                        }
+                        .font(.system(size: 11))
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
                 } else {
                     Text("Off means you start the server yourself and Loca only proxies the port.")
                         .font(.system(size: 11))
