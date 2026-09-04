@@ -101,14 +101,100 @@ final class HelperClient {
         }
     }
 
+    // MARK: - Domains
+
+    /// Pushes the enabled set to the proxy.
+    ///
+    /// Throws rather than reporting, so `AppStore` can roll its in-memory
+    /// change back: the UI must never show a domain as enabled that the proxy
+    /// is not actually serving.
+    func applyDomains(_ projects: [Project]) async throws {
+        let reply = try await withProxy { proxy, finish in
+            proxy.applyDomains(DomainPayload.encode(projects)) { ok, detail in
+                finish(.success(BoolReply(ok: ok, detail: detail)))
+            }
+        }
+        guard reply.ok else {
+            throw HelperClientError.rejected(reply.detail ?? "no detail")
+        }
+    }
+
+    // MARK: - Resolver
+
+    /// - Returns: the path a pre-existing foreign resolver file was backed up
+    ///   to, when there was one.
+    @discardableResult
+    func installResolver() async throws -> String? {
+        let reply = try await withProxy { proxy, finish in
+            proxy.installDNSResolver { ok, detail in
+                finish(.success(BoolReply(ok: ok, detail: detail)))
+            }
+        }
+        guard reply.ok else {
+            throw HelperClientError.rejected(reply.detail ?? "no detail")
+        }
+        return reply.detail
+    }
+
+    func removeResolver() async throws {
+        let reply = try await withProxy { proxy, finish in
+            proxy.removeDNSResolver { ok, detail in
+                finish(.success(BoolReply(ok: ok, detail: detail)))
+            }
+        }
+        guard reply.ok else {
+            throw HelperClientError.rejected(reply.detail ?? "no detail")
+        }
+    }
+
+    // MARK: - Certificate authority
+
+    /// The root certificate, or `nil` when Caddy has not issued one yet —
+    /// which is the case until the first domain is applied.
+    func certificateAuthorityRoot() async throws -> Data? {
+        let reply = try await withProxy { proxy, finish in
+            proxy.certificateAuthorityRoot { der, detail in
+                finish(.success(RootReply(der: der, detail: detail)))
+            }
+        }
+        return reply.der
+    }
+
+    /// Trust lives in the user's keychain, so it is installed and evaluated
+    /// here rather than by the helper. See `CertificateTrust` for why neither
+    /// side can do both halves.
+    func trustCertificateAuthority() async throws {
+        guard let der = try await certificateAuthorityRoot() else {
+            throw HelperClientError.rejected(
+                "Caddy has not issued its root certificate yet — add a domain first")
+        }
+        guard !CertificateTrust.isTrusted(rootCertificateDER: der) else { return }
+        try CertificateTrust.install(rootCertificateDER: der)
+    }
+
+    func certificateAuthorityIsTrusted() async -> Bool {
+        // `try?` on a throwing call that already returns an optional flattens
+        // to a single level, so one binding is all this needs.
+        guard let der = try? await certificateAuthorityRoot() else { return false }
+        return CertificateTrust.isTrusted(rootCertificateDER: der)
+    }
+
+    // MARK: - Diagnostics
+
     /// Values are flattened to strings inside the reply block, on the queue XPC
     /// delivers them on, so nothing non-`Sendable` crosses back to the main
     /// actor.
+    ///
+    /// The flattening itself lives in a file-scope function on purpose. A
+    /// closure written inline here would inherit this type's `@MainActor`
+    /// isolation, Swift would insert an isolation check into it, and the check
+    /// would fail — XPC reply blocks do not run on the main queue. That fails
+    /// as a dispatch assertion at launch, not a compile error.
     func diagnostics() async -> [String: String] {
         do {
             return try await withProxy { proxy, finish in
                 proxy.diagnostics { raw in
-                    finish(.success(raw.mapValues { String(describing: $0) }))
+                    finish(.success(flattenDiagnostics(raw)))
                 }
             }
         } catch {
@@ -174,17 +260,39 @@ final class HelperClient {
     }
 }
 
+/// Deliberately at file scope, which makes it non-isolated.
+///
+/// Anything that runs inside an XPC reply block has to be, because those blocks
+/// arrive on a background queue.
+private func flattenDiagnostics(_ raw: [String: NSObject]) -> [String: String] {
+    raw.mapValues { String(describing: $0) }
+}
+
 private struct HelperIdentity: Sendable {
     let version: Int
     let build: String
 }
 
+private struct BoolReply: Sendable {
+    let ok: Bool
+    let detail: String?
+}
+
+private struct RootReply: Sendable {
+    let der: Data?
+    let detail: String?
+}
+
 enum HelperClientError: LocalizedError {
     case noProxy
+    /// The helper answered, and said no. Its own words are carried through,
+    /// because they are the only thing that explains a rejected config.
+    case rejected(String)
 
     var errorDescription: String? {
         switch self {
         case .noProxy: return "the helper connection returned no proxy object"
+        case .rejected(let detail): return detail
         }
     }
 }
