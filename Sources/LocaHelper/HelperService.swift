@@ -24,7 +24,7 @@ final class HelperService: NSObject, LocaHelperProtocol {
 
     func installDNSResolver(reply: @escaping (Bool, String?) -> Void) {
         do {
-            let backup = try ResolverInstaller.install()
+            let backup = try SystemResolver.install()
             reply(true, backup)
         } catch {
             NSLog("loca: installDNSResolver failed: %@", String(describing: error))
@@ -34,7 +34,7 @@ final class HelperService: NSObject, LocaHelperProtocol {
 
     func removeDNSResolver(reply: @escaping (Bool, String?) -> Void) {
         do {
-            try ResolverInstaller.remove()
+            try SystemResolver.remove()
             reply(true, nil)
         } catch {
             NSLog("loca: removeDNSResolver failed: %@", String(describing: error))
@@ -72,7 +72,7 @@ final class HelperService: NSObject, LocaHelperProtocol {
     /// Everything the onboarding panel needs to explain why something is not
     /// working, in one round trip.
     func diagnostics(reply: @escaping ([String: NSObject]) -> Void) {
-        let resolver = ResolverInstaller.status()
+        let resolver = SystemResolver.status()
 
         var report: [String: NSObject] = [
             "helperVersion": NSNumber(value: locaHelperProtocolVersion),
@@ -103,7 +103,7 @@ final class HelperService: NSObject, LocaHelperProtocol {
         dns.stop()
 
         do {
-            try ResolverInstaller.remove()
+            try SystemResolver.remove()
         } catch {
             problems.append(error.localizedDescription)
         }
