@@ -29,6 +29,7 @@ struct MenuBarView: View {
             Button("Open Loca") { openWindow(id: "main") }
 
             Text(helperSummary)
+            Text("Loca \(AboutCard.version) · \(AboutCard.author)")
 
             Divider()
 

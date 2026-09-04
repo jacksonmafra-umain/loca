@@ -21,7 +21,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Loca is published under the MIT license.</string>
+	<string>Copyright © 2026 Jackson Mafra. MIT licensed.</string>
 	<!-- The app is not an agent: it owns a real window. The menu bar item in
 	     milestone 6 is in addition to it, not instead of it. -->
 	<key>LSUIElement</key>

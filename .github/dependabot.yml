@@ -1,0 +1,16 @@
+# dependabot.yml cannot be inherited from a .github repository, so it lives here.
+#
+# There are no package dependencies to watch — LocaCore imports nothing but
+# Foundation, and Caddy is pinned by version and checksum in the Makefile, which
+# Dependabot cannot read. So this covers the one thing it can: the actions used
+# by CI.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore"
+    labels:
+      - build

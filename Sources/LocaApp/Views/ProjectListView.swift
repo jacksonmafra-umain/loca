@@ -112,11 +112,11 @@ struct ProjectListView: View {
                         .foregroundStyle(Theme.textSecondary)
                 } else {
                     Group {
-                        Text("\(store.projects.count) ")
+                        Text(String(store.projects.count) + " ")
                             .foregroundStyle(Theme.text)
                             + Text(store.projects.count == 1 ? "domain, " : "domains, ")
                             .foregroundStyle(Theme.textSecondary)
-                            + Text("\(servingCount) serving")
+                            + Text(String(servingCount) + " serving")
                             .foregroundStyle(Theme.accent)
                     }
                     .font(.system(size: 13, weight: .medium))
@@ -217,7 +217,7 @@ struct ProjectListView: View {
                         }
                     }
 
-                    Text("127.0.0.1:\(project.port) · \(project.folder.lastPathComponent)")
+                    Text("\(project.upstream) · \(project.folder.lastPathComponent)")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textTertiary)
                         .lineLimit(1)

@@ -9,6 +9,18 @@ enum Section: String, Hashable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Where the last selected pane is remembered, so the window reopens on
+    /// the one you were using.
+    static let preferenceKey = "selectedSection"
+
+    static var lastSelected: Section {
+        get {
+            UserDefaults.standard.string(forKey: preferenceKey)
+                .flatMap(Section.init(rawValue:)) ?? .domains
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: preferenceKey) }
+    }
+
     var title: String {
         switch self {
         case .domains: "Domains"
@@ -128,7 +140,7 @@ struct SidebarView: View {
                 Spacer(minLength: 0)
 
                 if section == .domains, !store.projects.isEmpty {
-                    Text("\(store.projects.count)")
+                    Text(String(store.projects.count))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.textTertiary)
                 }
@@ -168,8 +180,25 @@ struct SidebarView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            credit
         }
+    }
+
+    /// Always visible, rather than only in the Setup pane's About card.
+    /// Attribution that needs scrolling to find is attribution nobody reads.
+    private var credit: some View {
+        HStack(spacing: 3) {
+            Text("v\(AboutCard.version) ·")
+            Link(AboutCard.author, destination: AboutCard.authorURL)
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .font(.system(size: 9))
+        .foregroundStyle(Theme.textTertiary)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
     }
 
     private var helperSummary: String {

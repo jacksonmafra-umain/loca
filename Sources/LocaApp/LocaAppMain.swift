@@ -45,7 +45,7 @@ struct RootView: View {
     let store: AppStore
     let runners: RunnerController
 
-    @State private var section: Section = .domains
+    @State private var section: Section = Section.lastSelected
     @State private var checkedGates = false
     @State private var inspector: InspectorController?
     /// A port the inspector handed to the domains pane.
@@ -58,6 +58,7 @@ struct RootView: View {
         }
         .background(Theme.surface)
         .ignoresSafeArea(.container, edges: .top)
+        .onChange(of: section) { _, selected in Section.lastSelected = selected }
         .task {
             store.load()
             await helper.refreshState()

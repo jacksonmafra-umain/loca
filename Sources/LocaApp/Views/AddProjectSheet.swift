@@ -150,7 +150,9 @@ struct AddProjectSheet: View {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(Theme.running)
-                    Text("Port \(portNumber) is already in use by \(owner), which matches this project.")
+                    Text(
+                        "Port \(String(portNumber)) is already in use by \(owner), which matches this project."
+                    )
                         .foregroundStyle(Theme.textSecondary)
                 }
                 .font(.system(size: 11))
@@ -158,7 +160,7 @@ struct AddProjectSheet: View {
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
                         .foregroundStyle(Theme.textTertiary)
-                    Text("Nothing is listening on port \(portNumber) yet.")
+                    Text("Nothing is listening on port \(String(portNumber)) yet.")
                         .foregroundStyle(Theme.textTertiary)
                 }
                 .font(.system(size: 11))

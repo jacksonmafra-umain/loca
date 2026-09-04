@@ -33,6 +33,7 @@ struct OnboardingView: View {
                     certificateStep
                     if let error { errorCard(error) }
                     notes
+                    AboutCard()
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 24)
