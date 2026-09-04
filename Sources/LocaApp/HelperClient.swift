@@ -23,7 +23,17 @@ final class HelperClient {
     private(set) var helperBuild: String?
     private(set) var lastError: String?
 
-    private let daemon = SMAppService.daemon(plistName: "\(Paths.helperLabel).plist")
+    /// Computed rather than stored, because `SMAppService` is not `Sendable`.
+    ///
+    /// A stored instance cannot be passed into `unregister()`'s async call from
+    /// the main actor — that is sending a non-`Sendable` value across an
+    /// isolation boundary. A freshly created one is uniquely referenced, so
+    /// region-based isolation lets it cross. Cheap to build; it is a handle,
+    /// not a connection.
+    private var daemon: SMAppService {
+        SMAppService.daemon(plistName: "\(Paths.helperLabel).plist")
+    }
+
     private var connection: NSXPCConnection?
 
     // MARK: - Registration
@@ -51,8 +61,11 @@ final class HelperClient {
 
     func unregister() async {
         lastError = nil
+        // Bound to a local first: the value has to be uniquely referenced to be
+        // sent into the async call.
+        let service = daemon
         do {
-            try await daemon.unregister()
+            try await service.unregister()
         } catch {
             lastError = "could not unregister the helper: \(error.localizedDescription)"
         }
