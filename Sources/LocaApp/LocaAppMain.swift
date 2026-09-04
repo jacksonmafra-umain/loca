@@ -25,6 +25,15 @@ struct LocaAppMain: App {
                 .frame(minWidth: 960, minHeight: 640)
         }
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+
+        // The menu bar item is what makes closing the window sensible: with a
+        // way back and per-project actions a click away, the window stops
+        // being the app and becomes one view of it.
+        MenuBarExtra {
+            MenuBarView(store: store, helper: helper, runners: runners)
+        } label: {
+            Image(systemName: "link")
+        }
     }
 }
 
