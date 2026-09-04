@@ -1,0 +1,56 @@
+# Workflows cannot be inherited from a .github repository, so this lives here.
+#
+# It runs the LocaCore test suite, which is the part that needs no root, no
+# Keychain prompt, and no Caddy binary — the whole reason that library imports
+# nothing but Foundation.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test LocaCore
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+  build:
+    name: Build both executables
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The bundle is deliberately not assembled here. `make app` needs a
+      # code-signing identity, and putting a certificate into CI to prove the
+      # compiler works is a bad trade — compiling both products catches
+      # everything a signature would not.
+      - name: Build
+        run: |
+          swift build -c release --product LocaCore
+          swift build -c release --product LocaHelper
+          swift build -c release --product LocaApp
+
+  vendor:
+    name: Verify the pinned Caddy checksum
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Catches a pin that has gone stale or a release that was replaced
+      # upstream, which would otherwise only surface on someone's first build.
+      - name: Vendor Caddy
+        run: make vendor-caddy

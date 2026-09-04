@@ -1,0 +1,5 @@
+# CODEOWNERS cannot be inherited from a .github repository, so it lives here.
+#
+# Everything, for now. Narrow it per directory when there is more than one
+# person to route to.
+*	@jacksonmafra-umain
