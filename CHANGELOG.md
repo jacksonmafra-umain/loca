@@ -11,6 +11,30 @@ releases. `1.0.0` marks the point where the design document's scope is complete.
 
 ## [Unreleased]
 
+### Added
+
+- The main window: a list of registered domains with enable toggles, port
+  conflict badges, and a detail pane; a folder-drop add sheet that shows which
+  files each proposed value came from and cross-checks the port against what is
+  actually listening; and a setup pane gating helper, resolver, and certificate
+  trust.
+- A five-colour palette with semantic roles, resolved per appearance so the
+  window follows the system rather than committing to one look. Layout is a
+  recessed navigation column, a content pane of cards, and a bottom action bar
+  with one primary action.
+- Both warnings the design document insists on, in the setup pane: Firefox
+  keeps its own trust store and needs `security.enterprise_roots.enabled`, and
+  any `.local` entries in `/etc/hosts` are listed with a plain statement that
+  Loca will not touch them.
+
+### Fixed
+
+- The app crashed on launch with a dispatch assertion. A `mapValues` closure
+  written inline inside a `@MainActor` type inherited that isolation, so Swift
+  inserted an isolation check into it — and XPC delivers reply blocks on a
+  background queue, where the check fails. It compiled cleanly and died at
+  runtime.
+
 ## [0.3.0] — 2026-09-04
 
 Trusted HTTPS. `https://<slug>.test` works in the browser, wildcard subdomains

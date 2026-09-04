@@ -3,7 +3,8 @@ import SwiftUI
 
 @main
 struct LocaAppMain: App {
-    @State private var helper = HelperClient()
+    @State private var helper: HelperClient
+    @State private var store: AppStore
 
     /// `SMAppService` can only be called from inside the signed bundle, so
     /// registering the helper has to go through this binary. Handling a couple
@@ -11,79 +12,109 @@ struct LocaAppMain: App {
     /// shell commands rather than a list of buttons to click.
     init() {
         CommandLineMode.runIfRequested()
+
+        let helper = HelperClient()
+        _helper = State(initialValue: helper)
+        _store = State(initialValue: AppStore(helper: helper))
     }
 
     var body: some Scene {
         Window("Loca", id: "main") {
-            RootView(helper: helper)
-                .frame(minWidth: 620, minHeight: 460)
-                .task { await helper.refreshState() }
+            RootView(helper: helper, store: store)
+                .frame(minWidth: 940, minHeight: 600)
+        }
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+    }
+}
+
+struct RootView: View {
+    let helper: HelperClient
+    let store: AppStore
+
+    @State private var section: Section = .domains
+    @State private var checkedGates = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SidebarView(selection: $section, store: store, helper: helper)
+            content
+        }
+        .background(Theme.surface)
+        .ignoresSafeArea(.container, edges: .top)
+        .task {
+            store.load()
+            await helper.refreshState()
+
+            guard !checkedGates else { return }
+            checkedGates = true
+
+            let diagnostics = await helper.diagnostics()
+            let ready = helper.state == .installed && diagnostics["resolverManagedByLoca"] == "1"
+            if ready {
+                // The proxy holds no state across a reboot, so the saved list
+                // is pushed again on every launch.
+                await store.resync()
+            } else {
+                // Nothing else in the window can work until setup is done, so
+                // it opens there rather than showing a list that cannot serve.
+                section = .setup
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch section {
+        case .domains:
+            ProjectListView(store: store, helper: helper)
+        case .inspector:
+            ComingSoonPane(
+                icon: "dot.radiowaves.left.and.right",
+                title: "Port Inspector",
+                detail:
+                    "A live list of every listening TCP port with the process that owns it, Docker containers resolved to their names, and the domain each port is mapped to."
+            )
+        case .setup:
+            OnboardingView(helper: helper, store: store) { section = .domains }
         }
     }
 }
 
-/// Replaced by the project list in milestone 3. Until then it is the surface
-/// that installs the helper and reports what it says back, which is how
-/// milestone 1 gets verified at all.
-struct RootView: View {
-    let helper: HelperClient
-    @State private var diagnostics: [String: String] = [:]
+/// A pane for a section whose milestone has not landed yet.
+///
+/// Better than hiding the row: it says what is coming and keeps the navigation
+/// stable between releases.
+struct ComingSoonPane: View {
+    let icon: String
+    let title: String
+    let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Loca")
-                .font(.largeTitle)
-            Text("core \(LocaCoreVersion.current), helper protocol \(locaHelperProtocolVersion)")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            Divider()
-
-            LabeledContent("Helper") { Text(statusText).foregroundStyle(statusColor) }
-            if let build = helper.helperBuild {
-                LabeledContent("Reported build") { Text(build).monospaced() }
-            }
-            if let error = helper.lastError {
-                Text(error).foregroundStyle(.red).font(.callout)
-            }
-
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Button("Install helper") { helper.register() }
-                Button("Open Login Items") { helper.openLoginItemsSettings() }
-                Button("Refresh") { Task { await helper.refreshState() } }
-                Button("Diagnostics") {
-                    Task { diagnostics = await helper.diagnostics() }
-                }
-                Button("Remove helper") { Task { await helper.unregister() } }
+                Text(title)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                Spacer()
+                Badge(text: "not in this release", tone: .neutral)
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 22)
+            .padding(.bottom, 16)
 
-            if !diagnostics.isEmpty {
-                Divider()
-                ForEach(diagnostics.keys.sorted(), id: \.self) { key in
-                    LabeledContent(key) { Text(diagnostics[key] ?? "").monospaced() }
-                }
+            VStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 30, weight: .light))
+                    .foregroundStyle(Theme.accentSoft)
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(24)
-    }
-
-    private var statusText: String {
-        switch helper.state {
-        case .notInstalled: "not installed"
-        case .requiresApproval: "waiting for approval in Login Items"
-        case .installed: "installed"
-        case .versionSkew(let version): "version skew — helper speaks \(version)"
-        case .unreachable(let reason): "unreachable — \(reason)"
-        }
-    }
-
-    private var statusColor: Color {
-        switch helper.state {
-        case .installed: .green
-        case .requiresApproval: .orange
-        default: .red
-        }
+        .background(Theme.surface)
     }
 }
