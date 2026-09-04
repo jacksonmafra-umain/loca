@@ -50,6 +50,8 @@ struct RootView: View {
     @State private var inspector: InspectorController?
     /// A port the inspector handed to the domains pane.
     @State private var pendingPort: Int?
+    /// A slug the setup pane handed over, migrating a hosts entry.
+    @State private var pendingSlug: String?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -91,7 +93,8 @@ struct RootView: View {
         switch section {
         case .domains:
             ProjectListView(
-                store: store, helper: helper, runners: runners, pendingPort: $pendingPort)
+                store: store, helper: helper, runners: runners,
+                pendingPort: $pendingPort, pendingSlug: $pendingSlug)
         case .inspector:
             if let inspector {
                 InspectorView(inspector: inspector, store: store) { port in
@@ -104,7 +107,14 @@ struct RootView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         case .setup:
-            OnboardingView(helper: helper, store: store) { section = .domains }
+            OnboardingView(helper: helper, store: store) {
+                section = .domains
+            } onMigrate: { slug in
+                // The hosts file records neither a folder nor a port, so the
+                // domains pane finishes the job by asking for them.
+                pendingSlug = slug
+                section = .domains
+            }
         }
     }
 }

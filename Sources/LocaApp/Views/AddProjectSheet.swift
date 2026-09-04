@@ -14,6 +14,9 @@ struct AddProjectSheet: View {
     /// Set when the sheet was opened from the inspector, which already knows
     /// the port and should not have it guessed over.
     var initialPort: Int?
+    /// Set when migrating a `/etc/hosts` entry, where the name is the whole
+    /// point of the exercise.
+    var initialSlug: String?
     var onFinished: () -> Void
 
     @State private var slug = ""
@@ -270,7 +273,8 @@ struct AddProjectSheet: View {
         // through the same uniqueness check as one derived from the folder
         // name, so a repository cannot take a domain that is already
         // registered.
-        slug = store.uniqueSlug(detection.suggestedSlug ?? folder.lastPathComponent)
+        slug = store.uniqueSlug(
+            initialSlug ?? detection.suggestedSlug ?? folder.lastPathComponent)
         // A port the user picked from the inspector is a fact, not a guess, so
         // it wins over detection.
         port = (initialPort ?? detection.port).map(String.init) ?? ""
