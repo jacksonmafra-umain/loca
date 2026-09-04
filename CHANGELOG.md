@@ -13,6 +13,14 @@ breaking change to any of the three means a major version.
 
 ### Added
 
+- `make dmg` and `make release`, producing a drag-to-install disk image, and
+  `make signing-report`, which says what this machine's certificate actually
+  allows.
+- `make notarize`, which submits the image to Apple and staples the ticket. It
+  refuses up front, with the reason, when the certificate or the credentials
+  are missing — rather than submitting something Apple would reject. It needs a
+  **Developer ID Application** certificate, which needs a paid Apple Developer
+  Program membership.
 - Migration of hand-written `/etc/hosts` entries. Setup lists each family of
   `.local` names with what one Loca domain would give instead — every name over
   HTTPS with a trusted certificate, plus any subdomain nobody thought of yet,
