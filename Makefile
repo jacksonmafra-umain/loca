@@ -42,6 +42,7 @@ SIGN_ID ?= $(shell security find-identity -v -p codesigning | head -1 | sed -E '
 .PHONY: help
 help:
 	@echo "make test              run the LocaCore test suite"
+	@echo "make check             test plus a release build — what CI runs"
 	@echo "make vendor-caddy      download and verify Caddy $(CADDY_VERSION) into $(CADDY)"
 	@echo "make build             compile both executables"
 	@echo "make app               assemble and sign $(APP)"
@@ -88,6 +89,14 @@ revendor-caddy:
 build:
 	swift build -c $(CONFIG) --product $(APP_BINARY)
 	swift build -c $(CONFIG) --product $(HELPER_NAME)
+
+# Exactly what CI runs. Worth having as one command: `swift test` builds in
+# debug, and the concurrency checker rejects things in a release build that it
+# waves through in a debug one — which is how a CI failure first got past a
+# green local test run.
+.PHONY: check
+check: test build
+	@echo "test and release build both clean"
 
 # The layout SMAppService expects: both executables in Contents/MacOS, and the
 # daemon's plist in Contents/Library/LaunchDaemons.

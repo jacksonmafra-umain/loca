@@ -131,11 +131,11 @@ enum CommandLineMode {
         }
 
         // The daemon last, since the steps above need it alive.
-        let daemon = SMAppService.daemon(plistName: "\(Paths.helperLabel).plist")
+
         let semaphore = DispatchSemaphore(value: 0)
         let box = Box()
         Task {
-            do { try await daemon.unregister() } catch { box.failure = error }
+            do { try await DaemonRegistration.unregister() } catch { box.failure = error }
             semaphore.signal()
         }
         semaphore.wait()
@@ -372,14 +372,10 @@ enum CommandLineMode {
         print("status: \(statusDescription)")
     }
 
-    private static var daemon: SMAppService {
-        SMAppService.daemon(plistName: "\(Paths.helperLabel).plist")
-    }
-
     private static func register() {
         let thrown: (any Error)?
         do {
-            try daemon.register()
+            try DaemonRegistration.register()
             thrown = nil
         } catch {
             thrown = error
@@ -390,7 +386,7 @@ enum CommandLineMode {
         // bootstrap a disallowed job, and that comes back as an error even
         // though the registration itself succeeded. The status afterwards is
         // the honest signal.
-        let status = daemon.status
+        let status = DaemonRegistration.status
         guard status == .enabled || status == .requiresApproval else {
             let reason = thrown?.localizedDescription ?? statusDescription
             FileHandle.standardError.write(Data("register failed: \(reason)\n".utf8))
@@ -403,7 +399,7 @@ enum CommandLineMode {
             // it here. Saying so is the difference between "it does not work"
             // and one click.
             print("approve it in System Settings > General > Login Items")
-            SMAppService.openSystemSettingsLoginItems()
+            DaemonRegistration.openLoginItemsSettings()
         }
     }
 
@@ -418,7 +414,7 @@ enum CommandLineMode {
         let box = Box()
 
         Task {
-            do { try await daemon.unregister() } catch { box.failure = error }
+            do { try await DaemonRegistration.unregister() } catch { box.failure = error }
             semaphore.signal()
         }
         semaphore.wait()
@@ -432,12 +428,6 @@ enum CommandLineMode {
     }
 
     private static var statusDescription: String {
-        switch daemon.status {
-        case .notRegistered: "not registered"
-        case .enabled: "enabled"
-        case .requiresApproval: "requires approval in Login Items"
-        case .notFound: "not found in the app bundle"
-        @unknown default: "unknown"
-        }
+        DaemonRegistration.describe(DaemonRegistration.status)
     }
 }

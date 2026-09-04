@@ -23,17 +23,6 @@ final class HelperClient {
     private(set) var helperBuild: String?
     private(set) var lastError: String?
 
-    /// Computed rather than stored, because `SMAppService` is not `Sendable`.
-    ///
-    /// A stored instance cannot be passed into `unregister()`'s async call from
-    /// the main actor — that is sending a non-`Sendable` value across an
-    /// isolation boundary. A freshly created one is uniquely referenced, so
-    /// region-based isolation lets it cross. Cheap to build; it is a handle,
-    /// not a connection.
-    private var daemon: SMAppService {
-        SMAppService.daemon(plistName: "\(Paths.helperLabel).plist")
-    }
-
     private var connection: NSXPCConnection?
 
     // MARK: - Registration
@@ -42,7 +31,7 @@ final class HelperClient {
         lastError = nil
         let thrown: (any Error)?
         do {
-            try daemon.register()
+            try DaemonRegistration.register()
             thrown = nil
         } catch {
             thrown = error
@@ -61,11 +50,8 @@ final class HelperClient {
 
     func unregister() async {
         lastError = nil
-        // Bound to a local first: the value has to be uniquely referenced to be
-        // sent into the async call.
-        let service = daemon
         do {
-            try await service.unregister()
+            try await DaemonRegistration.unregister()
         } catch {
             lastError = "could not unregister the helper: \(error.localizedDescription)"
         }
@@ -76,11 +62,11 @@ final class HelperClient {
     /// Opens the Login Items pane, the only place a registered daemon can be
     /// approved.
     func openLoginItemsSettings() {
-        SMAppService.openSystemSettingsLoginItems()
+        DaemonRegistration.openLoginItemsSettings()
     }
 
     private func refreshRegistrationState() {
-        switch daemon.status {
+        switch DaemonRegistration.status {
         case .notRegistered: state = .notInstalled
         case .requiresApproval: state = .requiresApproval
         case .enabled: state = .installed
