@@ -57,6 +57,10 @@ enum CommandLineMode {
             runner(slug) { try RunnerAgent.stop($0) }
             exit(0)
         }
+        if arguments.contains("--inspect") {
+            printListeningPorts()
+            exit(0)
+        }
         if let slug = value(of: "--runner-status", in: CommandLine.arguments) {
             runner(slug) { project in
                 let status = RunnerAgent.status(for: project)
@@ -69,6 +73,31 @@ enum CommandLineMode {
                 if let runs = status.runs { print("runs: \(runs)") }
             }
             exit(0)
+        }
+    }
+
+    // MARK: - Inspector
+
+    /// The same pipeline the inspector pane shows: `lsof`, enriched with
+    /// Docker, cross-referenced with the registered domains.
+    private static func printListeningPorts() {
+        let docker = DockerSocketClient()
+        let containers = docker.containers()
+        let projects = (try? ConfigStore(paths: Paths()).load().projects) ?? []
+        let rows = DockerPortMapper.enrich(PortLookup.allListening(), with: containers)
+
+        print("docker socket: \(docker.isAvailable ? "available" : "absent")")
+        print("published container ports: \(containers.count)")
+        print("")
+        print("PORT   OWNER                          DETAIL                    DOMAIN")
+
+        for row in rows {
+            let domain = projects.first { $0.port == row.port }?.domain ?? "—"
+            let owner = row.owner.padding(toLength: 30, withPad: " ", startingAt: 0)
+            let detail = (row.detail ?? "—").padding(
+                toLength: 25, withPad: " ", startingAt: 0)
+            let port = String(row.port).padding(toLength: 6, withPad: " ", startingAt: 0)
+            print("\(port) \(owner) \(detail) \(domain)")
         }
     }
 

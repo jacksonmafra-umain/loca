@@ -10,8 +10,11 @@ struct ProjectListView: View {
     let store: AppStore
     let helper: HelperClient
     let runners: RunnerController
+    /// A port handed over by the inspector, waiting for a folder to go with it.
+    @Binding var pendingPort: Int?
 
     @State private var droppedFolder: URL?
+    @State private var sheetPort: Int?
     @State private var selection: Project.ID?
     @State private var isTargeted = false
     @State private var removalCandidate: Project?
@@ -37,9 +40,18 @@ struct ProjectListView: View {
             }
         }
         .sheet(item: $droppedFolder) { folder in
-            AddProjectSheet(folder: folder, store: store) {
+            AddProjectSheet(folder: folder, store: store, initialPort: sheetPort) {
+                sheetPort = nil
                 Task { await helper.refreshState() }
             }
+        }
+        // The inspector knows a port but not a folder, so arriving here asks
+        // for the folder and carries the port through.
+        .onChange(of: pendingPort) { _, port in
+            guard let port else { return }
+            pendingPort = nil
+            sheetPort = port
+            chooseFolder()
         }
         .confirmationDialog(
             removalCandidate.map { "Remove \($0.domain)?" } ?? "",
