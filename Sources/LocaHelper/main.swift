@@ -5,7 +5,8 @@ import LocaCore
 // its own. It listens, and it waits.
 
 let buildDescription = "LocaHelper core \(LocaCoreVersion.current)"
-let service = HelperService(buildDescription: buildDescription)
+let dns = DNSListener()
+let service = HelperService(buildDescription: buildDescription, dns: dns)
 let listener = XPCListener(service: service)
 
 // launchd sends SIGTERM on bootout. Handling it explicitly means the listener
@@ -15,10 +16,14 @@ signal(SIGTERM, SIG_IGN)
 let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
 termination.setEventHandler {
     NSLog("loca: helper received SIGTERM, shutting down")
+    dns.stop()
     listener.stop()
     exit(0)
 }
 termination.resume()
 
+// DNS comes up first and unconditionally. Resolution has to work whether or
+// not the app is running, and it does not depend on any configuration.
+dns.start()
 listener.start()
 RunLoop.main.run()

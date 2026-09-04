@@ -9,9 +9,11 @@ import LocaCore
 /// compromised user-session process from handing root something to execute.
 final class HelperService: NSObject, LocaHelperProtocol {
     private let buildDescription: String
+    private let dns: DNSListener
 
-    init(buildDescription: String) {
+    init(buildDescription: String, dns: DNSListener) {
         self.buildDescription = buildDescription
+        self.dns = dns
     }
 
     func helperVersion(reply: @escaping (Int, String) -> Void) {
