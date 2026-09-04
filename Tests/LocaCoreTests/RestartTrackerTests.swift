@@ -66,6 +66,70 @@ struct RestartTrackerTests {
         #expect(tracker.record(at: start.addingTimeInterval(3)) == false)
     }
 
+    // MARK: - Driven by launchctl's runs counter
+
+    /// The first observation infers nothing: a service that ran forty times
+    /// before the app opened is not evidence of a loop happening now.
+    @Test func theFirstObservationRecordsNothing() {
+        var tracker = RestartTracker()
+        #expect(tracker.record(runs: 40, previousRuns: nil, at: start) == false)
+        #expect(tracker.recentCount == 0)
+        #expect(!tracker.isUnstable)
+    }
+
+    @Test func anUnchangedCounterRecordsNothing() {
+        var tracker = RestartTracker()
+        _ = tracker.record(runs: 3, previousRuns: nil, at: start)
+        #expect(tracker.record(runs: 3, previousRuns: 3, at: start) == false)
+        #expect(tracker.recentCount == 0)
+    }
+
+    /// launchd relaunches a broken command about every ten seconds, so three
+    /// polls three seconds apart see the counter step up.
+    @Test func aClimbingCounterTripsAtTheThirdRelaunch() {
+        var tracker = RestartTracker()
+        #expect(tracker.record(runs: 2, previousRuns: 1, at: start) == false)
+        #expect(
+            tracker.record(runs: 3, previousRuns: 2, at: start.addingTimeInterval(10)) == false)
+        #expect(
+            tracker.record(runs: 4, previousRuns: 3, at: start.addingTimeInterval(20)) == true)
+        #expect(tracker.isUnstable)
+    }
+
+    /// A jump larger than one means several relaunches happened between polls.
+    /// Dropping them would make a fast loop look calmer than a slow one.
+    @Test func aJumpRecordsEveryRelaunchItImplies() {
+        var tracker = RestartTracker()
+        #expect(tracker.record(runs: 4, previousRuns: 1, at: start) == true)
+        #expect(tracker.recentCount == 3)
+    }
+
+    /// A lower count means the service was booted out and started afresh.
+    @Test func aFallingCounterResetsRatherThanCounting() {
+        var tracker = RestartTracker()
+        _ = tracker.record(runs: 4, previousRuns: 1, at: start)
+        #expect(tracker.isUnstable)
+
+        #expect(tracker.record(runs: 1, previousRuns: 4, at: start.addingTimeInterval(1)) == false)
+        #expect(!tracker.isUnstable)
+        #expect(tracker.recentCount == 0)
+    }
+
+    /// Relaunches spread wider than the window are a server that occasionally
+    /// dies, not a loop.
+    @Test func aSlowlyClimbingCounterNeverTrips() {
+        var tracker = RestartTracker()
+        var previous = 1
+        for step in 1...8 {
+            let runs = previous + 1
+            let tripped = tracker.record(
+                runs: runs, previousRuns: previous, at: start.addingTimeInterval(Double(step) * 45))
+            #expect(tripped == false)
+            previous = runs
+        }
+        #expect(!tracker.isUnstable)
+    }
+
     @Test func thresholdAndWindowAreInjectable() {
         var tracker = RestartTracker(threshold: 2, window: 5)
         #expect(tracker.record(at: start) == false)
