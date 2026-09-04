@@ -6,7 +6,8 @@ import LocaCore
 
 let buildDescription = "LocaHelper core \(LocaCoreVersion.current)"
 let dns = DNSListener()
-let service = HelperService(buildDescription: buildDescription, dns: dns)
+let caddy = CaddySupervisor(binary: HelperBundle.caddyBinary)
+let service = HelperService(buildDescription: buildDescription, dns: dns, caddy: caddy)
 let listener = XPCListener(service: service)
 
 // launchd sends SIGTERM on bootout. Handling it explicitly means the listener
@@ -17,6 +18,7 @@ let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
 termination.setEventHandler {
     NSLog("loca: helper received SIGTERM, shutting down")
     dns.stop()
+    caddy.stop()
     listener.stop()
     exit(0)
 }

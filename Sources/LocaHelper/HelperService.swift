@@ -10,10 +10,12 @@ import LocaCore
 final class HelperService: NSObject, LocaHelperProtocol {
     private let buildDescription: String
     private let dns: DNSListener
+    private let caddy: CaddySupervisor
 
-    init(buildDescription: String, dns: DNSListener) {
+    init(buildDescription: String, dns: DNSListener, caddy: CaddySupervisor) {
         self.buildDescription = buildDescription
         self.dns = dns
+        self.caddy = caddy
     }
 
     func helperVersion(reply: @escaping (Int, String) -> Void) {
@@ -47,13 +49,22 @@ final class HelperService: NSObject, LocaHelperProtocol {
     func applyDomains(_ payload: [[String: NSObject]], reply: @escaping (Bool, String?) -> Void) {
         // Validate first, always. This is the only path by which configuration
         // reaches root.
+        let projects: [Project]
         do {
-            let projects = try DomainPayload.decode(payload)
-            NSLog("loca: applyDomains accepted %d project(s)", projects.count)
-            reply(false, "the proxy arrives in milestone 2")
+            projects = try DomainPayload.decode(payload)
         } catch {
             NSLog("loca: applyDomains rejected: %@", String(describing: error))
             reply(false, "invalid domain payload: \(error)")
+            return
+        }
+
+        do {
+            try caddy.apply(projects: projects)
+            NSLog("loca: applied %d domain(s)", projects.filter(\.enabled).count)
+            reply(true, nil)
+        } catch {
+            NSLog("loca: applyDomains failed: %@", String(describing: error))
+            reply(false, error.localizedDescription)
         }
     }
 
@@ -81,7 +92,12 @@ final class HelperService: NSObject, LocaHelperProtocol {
             "dnsListening": NSNumber(value: PortProbe.owner(ofPort: Int(Paths.dnsPort)) != nil),
             "resolverExists": NSNumber(value: resolver.exists),
             "resolverManagedByLoca": NSNumber(value: resolver.managedByLoca),
+            "caddyRunning": NSNumber(value: caddy.isRunning),
         ]
+
+        if let exit = caddy.lastExitStatus {
+            report["caddyLastExitStatus"] = NSNumber(value: exit)
+        }
 
         // Named owners, not a boolean. "Something is on 443" sends the user
         // hunting; "nginx (pid 812) is on 443" ends the search.
@@ -101,6 +117,7 @@ final class HelperService: NSObject, LocaHelperProtocol {
         var problems: [String] = []
 
         dns.stop()
+        caddy.stop()
 
         do {
             try SystemResolver.remove()

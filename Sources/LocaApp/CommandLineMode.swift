@@ -41,6 +41,25 @@ enum CommandLineMode {
             printDiagnostics()
             exit(0)
         }
+        if arguments.contains("--trust-ca") {
+            trustCertificateAuthority()
+            exit(0)
+        }
+        if let spec = value(of: "--apply-domains", in: CommandLine.arguments) {
+            applyDomains(spec)
+            exit(0)
+        }
+    }
+
+    /// Reads `--flag value` or `--flag=value`.
+    private static func value(of flag: String, in arguments: [String]) -> String? {
+        for (index, argument) in arguments.enumerated() {
+            if argument == flag, index + 1 < arguments.count { return arguments[index + 1] }
+            if argument.hasPrefix(flag + "=") {
+                return String(argument.dropFirst(flag.count + 1))
+            }
+        }
+        return nil
     }
 
     // MARK: - Helper operations
@@ -62,6 +81,47 @@ enum CommandLineMode {
             proxy.removeDNSResolver { ok, detail in finish(Reply(ok: ok, detail: detail)) }
         } onSuccess: { _ in
             print("removed \(Paths.resolverFile.path())")
+        }
+    }
+
+    /// `--apply-domains slug:port[,slug:port…]`
+    ///
+    /// A stand-in for the project list until milestone 3 owns the config. It
+    /// exists so the proxy can be exercised end to end from a shell rather than
+    /// waiting on a UI.
+    private static func applyDomains(_ spec: String) {
+        var projects: [Project] = []
+        let home = URL(filePath: NSHomeDirectory())
+
+        for entry in spec.split(separator: ",") {
+            let parts = entry.split(separator: ":")
+            guard parts.count == 2, let port = Int(parts[1]) else {
+                FileHandle.standardError.write(
+                    Data("expected slug:port, got \"\(entry)\"\n".utf8))
+                exit(2)
+            }
+            projects.append(
+                Project(slug: String(parts[0]), folder: home, port: port))
+        }
+
+        run("apply domains") { proxy, finish in
+            proxy.applyDomains(DomainPayload.encode(projects)) { ok, detail in
+                finish(Reply(ok: ok, detail: detail))
+            }
+        } onSuccess: { _ in
+            for project in projects {
+                print("serving https://\(project.domain) -> 127.0.0.1:\(project.port)")
+            }
+        }
+    }
+
+    private static func trustCertificateAuthority() {
+        run("trust certificate authority") { proxy, finish in
+            proxy.trustCertificateAuthority { ok, detail in
+                finish(Reply(ok: ok, detail: detail))
+            }
+        } onSuccess: { _ in
+            print("the Caddy root certificate is trusted in the System keychain")
         }
     }
 
