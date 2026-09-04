@@ -1,0 +1,10 @@
+COMMAND                         PID          USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+node                          12313 jackson.mafra   12u  IPv4 0xaf41fe567f16b0ab      0t0  TCP *:3000 (LISTEN)
+node                          12313 jackson.mafra   13u  IPv6 0x8335000ce54812d3      0t0  TCP *:3000 (LISTEN)
+node                          12313 jackson.mafra   13u  IPv6 0x8335000ce54812d3      0t0  TCP *:3000 (LISTEN)
+com.docker.backend            17571 jackson.mafra  302u  IPv6 0x72bb7a01bbcea8ca      0t0  TCP *:5432 (LISTEN)
+Python                        77036 jackson.mafra    3u  IPv6 0xbc19b963b98ca976      0t0  TCP [::1]:8099 (LISTEN)
+Figma                           811 jackson.mafra   77u  IPv4 0xd33cbbb2b219e810      0t0  TCP 127.0.0.1:3845 (LISTEN)
+Vysor\x20Helper\x20(Renderer)   2768 jackson.mafra   27u  IPv6 0x7e124eceaa264255      0t0  TCP *:49190 (LISTEN)
+ollama                         4192 jackson.mafra    3u  IPv4 0x3466cb2be14a72d8      0t0  TCP 127.0.0.1:11434 (ESTABLISHED)
+adb                            2880 jackson.mafra    9u  IPv4 0x6689c652825bed9f      0t0  TCP 127.0.0.1:5037 (LISTEN)

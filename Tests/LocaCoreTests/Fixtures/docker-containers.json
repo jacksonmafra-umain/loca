@@ -1,0 +1,39 @@
+[
+  {
+    "Id": "632460dc8454e7caa22498aca26d74582d6392d9e1c86cd3db40dd0b44543948",
+    "Names": ["/app-web-1"],
+    "Image": "app-web",
+    "State": "running",
+    "Ports": [
+      { "IP": "0.0.0.0", "PrivatePort": 80, "PublicPort": 8080, "Type": "tcp" },
+      { "IP": "::", "PrivatePort": 80, "PublicPort": 8080, "Type": "tcp" }
+    ]
+  },
+  {
+    "Id": "2d7a9e39918000847ff6f86f45eb91767a56728792f9ffe4391e35a6304397d3",
+    "Names": ["/app-db-1"],
+    "Image": "postgres:16",
+    "State": "running",
+    "Ports": [
+      { "IP": "0.0.0.0", "PrivatePort": 5432, "PublicPort": 5432, "Type": "tcp" },
+      { "IP": "::", "PrivatePort": 5432, "PublicPort": 5432, "Type": "tcp" }
+    ]
+  },
+  {
+    "Id": "eaf1e74f0d994b306dad2215c231f07413ec740549f646d375703a2d4befce34",
+    "Names": ["/app-worker-1"],
+    "Image": "app-worker",
+    "State": "running",
+    "Ports": [{ "IP": "", "PrivatePort": 3000, "Type": "tcp" }]
+  },
+  {
+    "Id": "817dfc15bfbeee7aea49a92ac98aac1175c60a16d5e71ff83f01d7aebeded72e",
+    "Names": ["/app-cache-1"],
+    "Image": "redis:7",
+    "State": "running",
+    "Ports": [
+      { "IP": "0.0.0.0", "PrivatePort": 6379, "PublicPort": 6379, "Type": "tcp" },
+      { "IP": "0.0.0.0", "PrivatePort": 6380, "PublicPort": 6380, "Type": "udp" }
+    ]
+  }
+]

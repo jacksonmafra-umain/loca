@@ -1,0 +1,40 @@
+gui/501/dev.loca.run.projeto1 = {
+	active count = 0
+	path = /Users/test/Library/LaunchAgents/dev.loca.run.projeto1.plist
+	type = LaunchAgent
+	state = not running
+
+	program = /bin/zsh
+	arguments = {
+		/bin/zsh
+		-lc
+		exit 3
+	}
+
+	working directory = /Users/test/code/projeto1
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		LOCA_SLUG => projeto1
+		PORT => 2020
+		XPC_SERVICE_NAME => dev.loca.run.projeto1
+	}
+
+	domain = gui/501 [100023]
+	asid = 100023
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 1
+	last exit code = 3
+
+	event triggers = {
+	}
+
+	spawn type = daemon (3)
+	jetsam priority = 40
+	cpumon = default
+	properties = runatload | inferred program
+}
