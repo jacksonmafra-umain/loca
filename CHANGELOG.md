@@ -11,18 +11,45 @@ releases. `1.0.0` marks the point where the design document's scope is complete.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-04
+
+Trusted HTTPS. `https://<slug>.test` works in the browser, wildcard subdomains
+included.
+
 ### Added
 
 - Bundled Caddy 2.11.4, pinned by version and by SHA-256 for both
   architectures, downloaded by `make vendor-caddy` and signed during bundling.
   The tarball is checksummed on download and deleted afterwards, so an
   unexpected binary is refused before it can be signed into the bundle.
-- `CaddySupervisor`, which runs the bundled Caddy and applies domain changes as
-  a config load on the admin API rather than a restart, so open connections
-  survive. It probes `:80` and `:443` before launching and refuses with the name
-  and pid of whoever holds them, and restarts an unexpected exit with
-  exponential backoff capped at 30 seconds.
+- `CaddySupervisor`. Domain changes are applied as a config load on the admin
+  API rather than a restart, so open connections survive — enabling a domain
+  must not interrupt a download or a websocket someone is using. It probes
+  `:80` and `:443` before launching and refuses with the name and pid of
+  whoever holds them, because Caddy's own bind error names nothing, and it
+  restarts an unexpected exit with exponential backoff capped at 30 seconds.
+- Certificates for the apex and the wildcard from Caddy's internal CA, issued
+  from one site block so subdomains work with no further configuration.
+- A `handle_errors` page that names the domain and the port when nothing is
+  listening upstream, instead of a bare 502.
+- Trust for Caddy's root certificate, installed in the user's keychain by the
+  app. The helper exports the certificate and the app installs and evaluates
+  the trust, because neither can do both: a daemon cannot obtain the
+  authorization to write System keychain trust settings, and the user cannot
+  write that keychain at all. Scoping trust to one user rather than the whole
+  machine is also the smaller and more appropriate claim for a development
+  tool.
 - `--apply-domains slug:port` and `--trust-ca` on the app binary.
+
+### Changed
+
+- **XPC protocol version 2.** `trustCertificateAuthority` and
+  `certificateAuthorityIsTrusted` are replaced by `certificateAuthorityRoot`.
+  The helper can neither install user-domain trust nor observe it, so
+  diagnostics now report `caRootIssued` and leave the trust verdict to the app.
+- Caddy runs with `HOME`, `XDG_DATA_HOME`, and `XDG_CONFIG_HOME` pointing at
+  the helper-owned data directory. A launchd daemon has no `HOME`, and Caddy
+  otherwise warns that assets will land relative to a working directory of `/`.
 
 ## [0.2.0] — 2026-09-04
 
@@ -93,6 +120,7 @@ binary.
 - Crash-loop detection: three restarts within 60 seconds marks a runner
   unstable.
 
-[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jacksonmafra-umain/loca/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jacksonmafra-umain/loca/releases/tag/v0.1.0
