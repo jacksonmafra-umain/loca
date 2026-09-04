@@ -11,6 +11,7 @@ struct ProjectDetailPane: View {
 
     @State private var tailer = LogTailer()
     @State private var runnerError: String?
+    @State private var sharedFileError: String?
     @State private var showingLog = true
 
     private let paths = Paths()
@@ -31,6 +32,7 @@ struct ProjectDetailPane: View {
                         noRunner
                     }
                     mapping(project)
+                    sharedFile(project)
                     conflicts(project)
                     Spacer(minLength: 0)
                 }
@@ -377,6 +379,129 @@ struct ProjectDetailPane: View {
                 detailRow("Folder", project.folder.path(percentEncoded: false), monospaced: true)
                 detailRow("Certificate", "issued locally, apex and wildcard")
             }
+        }
+    }
+
+    // MARK: - Shared file
+
+    /// The project's own `.loca.json`, if it has one.
+    ///
+    /// Drift is *reported*, never applied. The local config is what the proxy
+    /// actually reflects, and a `git pull` that silently moved which port a
+    /// domain points at would be a bad surprise. Adopting is one click, which
+    /// is the difference between easy and automatic.
+    @ViewBuilder
+    private func sharedFile(_ project: Project) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("SHARED WITH THE PROJECT")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(Theme.textTertiary)
+                    Spacer()
+                    if let shared = SharedProjectFile.read(from: project.folder) {
+                        let differences = shared.differences(from: project)
+                        Badge(
+                            text: differences.isEmpty ? "in sync" : "\(differences.count) differ",
+                            tone: differences.isEmpty ? .good : .warning)
+                    } else {
+                        Badge(text: "not shared", tone: .neutral)
+                    }
+                }
+
+                if let shared = SharedProjectFile.read(from: project.folder) {
+                    let differences = shared.differences(from: project)
+
+                    if differences.isEmpty {
+                        Text(
+                            "\(SharedProjectFile.fileName) matches what is registered here. Anyone who clones this project gets the same domain and port."
+                        )
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ForEach(differences, id: \.field) { difference in
+                            HStack(alignment: .top, spacing: 10) {
+                                Text(difference.field)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textTertiary)
+                                    .frame(width: 100, alignment: .leading)
+                                Text(difference.shared)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Theme.accentSoft)
+                                Text("→")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textTertiary)
+                                Text(difference.local)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Theme.text)
+                                Spacer(minLength: 0)
+                            }
+                        }
+
+                        Text(
+                            "The project asks for the values on the left; yours are on the right. Nothing changed on its own."
+                        )
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    Text(
+                        "Committing a \(SharedProjectFile.fileName) lets anyone who clones this project get the same domain, port, and start command without setting them up by hand."
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: 8) {
+                    if let shared = SharedProjectFile.read(from: project.folder),
+                        !shared.differences(from: project).isEmpty
+                    {
+                        Button("Adopt the project's values") { adopt(shared, into: project) }
+                            .buttonStyle(.accent)
+                    }
+                    Button(
+                        SharedProjectFile.read(from: project.folder) == nil
+                            ? "Write \(SharedProjectFile.fileName)"
+                            : "Overwrite with mine"
+                    ) { export(project) }
+                    .buttonStyle(.quiet)
+                    .disabled(!FolderCheck.check(project.folder).isUsable)
+                }
+
+                if let sharedFileError {
+                    Text(sharedFileError)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func adopt(_ shared: SharedProjectFile, into project: Project) {
+        Task {
+            do {
+                // Through the store, so the slug still passes validation — the
+                // project's suggestion cannot collide with another domain.
+                try await store.update(shared.applied(to: project))
+                sharedFileError = nil
+            } catch {
+                sharedFileError = error.localizedDescription
+            }
+        }
+    }
+
+    private func export(_ project: Project) {
+        do {
+            try SharedProjectFile(from: project).write(to: project.folder)
+            sharedFileError = nil
+        } catch {
+            sharedFileError = "could not write \(SharedProjectFile.fileName): "
+                + error.localizedDescription
         }
     }
 

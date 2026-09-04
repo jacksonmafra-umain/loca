@@ -61,6 +61,14 @@ enum CommandLineMode {
             printListeningPorts()
             exit(0)
         }
+        if let slug = value(of: "--share-project", in: CommandLine.arguments) {
+            shareProject(slug)
+            exit(0)
+        }
+        if let path = value(of: "--read-shared-file", in: CommandLine.arguments) {
+            readSharedFile(path)
+            exit(0)
+        }
         if arguments.contains("--uninstall") {
             uninstall()
             exit(0)
@@ -155,6 +163,65 @@ enum CommandLineMode {
             let message = "\nsome steps failed:\n  " + problems.joined(separator: "\n  ") + "\n"
             FileHandle.standardError.write(Data(message.utf8))
             exit(1)
+        }
+    }
+
+    // MARK: - Shared project file
+
+    /// Writes the project's `.loca.json` from what is registered locally.
+    private static func shareProject(_ slug: String) {
+        runner(slug) { project in
+            let file = SharedProjectFile(from: project)
+            try file.write(to: project.folder)
+            print(
+                "wrote \(SharedProjectFile.url(in: project.folder).path(percentEncoded: false))")
+            print("  slug: \(file.slug)")
+            print("  port: \(file.port)")
+            if let command = file.runner?.command { print("  command: \(command)") }
+            print("")
+            print("Commit it and anyone who clones this project gets the same domain.")
+        }
+    }
+
+    /// Reads a folder's `.loca.json` and reports how it compares to what is
+    /// registered — the same drift the detail pane shows.
+    private static func readSharedFile(_ path: String) {
+        let folder = URL(filePath: path)
+
+        guard let shared = SharedProjectFile.read(from: folder) else {
+            let file = SharedProjectFile.url(in: folder).path(percentEncoded: false)
+            print(
+                FileManager.default.fileExists(atPath: file)
+                    ? "\(file) exists but is not usable — wrong version, bad slug, or bad port"
+                    : "no \(SharedProjectFile.fileName) in \(path)")
+            return
+        }
+
+        print("slug: \(shared.slug)")
+        print("port: \(shared.port)")
+        if let runner = shared.runner {
+            print("command: \(runner.command)")
+            print("restart on crash: \(runner.keepAlive)")
+        }
+
+        let projects = (try? ConfigStore(paths: Paths()).load().projects) ?? []
+        guard let local = projects.first(where: { $0.folder.path() == folder.path() }) else {
+            print("")
+            print("Not registered here yet. Dropping the folder into Loca will use these values.")
+            return
+        }
+
+        let differences = shared.differences(from: local)
+        print("")
+        if differences.isEmpty {
+            print("Matches what is registered as \(local.domain).")
+        } else {
+            print("Registered as \(local.domain), and these differ:")
+            for difference in differences {
+                print("  \(difference.field): project says \(difference.shared), yours says \(difference.local)")
+            }
+            print("")
+            print("Nothing changes on its own — adopt them in the app if you want them.")
         }
     }
 

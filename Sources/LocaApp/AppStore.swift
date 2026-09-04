@@ -120,7 +120,16 @@ final class AppStore {
     // MARK: - Proposals and conflicts
 
     func suggestedSlug(for folder: URL) -> String {
-        Slug.unique(folder.lastPathComponent, taken: Set(projects.map(\.slug)))
+        uniqueSlug(folder.lastPathComponent)
+    }
+
+    /// Normalizes a candidate and makes it unique among what is registered.
+    ///
+    /// Every slug goes through here, whether it came from a folder name or
+    /// from a project's own `.loca.json` — which is what keeps a repository
+    /// from claiming a domain somebody already has.
+    func uniqueSlug(_ candidate: String) -> String {
+        Slug.unique(candidate, taken: Set(projects.map(\.slug)))
     }
 
     /// Other projects pointed at the same port.
