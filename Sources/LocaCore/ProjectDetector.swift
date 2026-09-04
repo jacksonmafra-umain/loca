@@ -9,15 +9,27 @@ public struct DetectionResult: Equatable, Sendable {
     public var command: String?
     public var sources: [String]
     public var packageManager: String?
+    /// A slug the project asked for, when it committed a `.loca.json`.
+    ///
+    /// Still only a suggestion: the caller runs it through `Slug.unique`, so a
+    /// repository cannot take a domain that is already registered.
+    public var suggestedSlug: String?
+    /// Whether these values came from a committed `.loca.json` rather than
+    /// from guessing. The add sheet says so, because "the repository asked for
+    /// this" deserves more confidence than "we read package.json".
+    public var fromSharedFile: Bool
 
     public init(
         port: Int? = nil, command: String? = nil, sources: [String] = [],
-        packageManager: String? = nil
+        packageManager: String? = nil, suggestedSlug: String? = nil,
+        fromSharedFile: Bool = false
     ) {
         self.port = port
         self.command = command
         self.sources = sources
         self.packageManager = packageManager
+        self.suggestedSlug = suggestedSlug
+        self.fromSharedFile = fromSharedFile
     }
 }
 
@@ -33,6 +45,19 @@ public enum ProjectDetector {
 
     public static func detect(folder: URL) -> DetectionResult {
         var result = DetectionResult()
+
+        // A committed .loca.json is explicit intent, so it wins outright.
+        // Everything below it is inference, and inference should never overrule
+        // somebody writing the answer down.
+        if let shared = SharedProjectFile.read(from: folder) {
+            return DetectionResult(
+                port: shared.port,
+                command: shared.runner?.command,
+                sources: ["\(SharedProjectFile.fileName) (shared by the project)"],
+                packageManager: packageManager(folder: folder).name,
+                suggestedSlug: shared.slug,
+                fromSharedFile: true)
+        }
 
         // Order matters. An explicitly configured port beats a framework
         // default, and a port in .env beats one in a script, because .env is

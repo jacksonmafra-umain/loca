@@ -185,6 +185,55 @@ struct ProjectDetectorTests {
         }
     }
 
+    // MARK: - A committed .loca.json
+
+    /// Explicit intent beats inference. Somebody writing the answer down
+    /// should never be overruled by a guess from package.json.
+    @Test func aSharedFileWinsOverEveryHeuristic() throws {
+        try withProject([
+            ".loca.json": #"{"version":1,"slug":"agreed","port":4242,"runner":{"command":"make dev","keepAlive":true}}"#,
+            ".env": "PORT=1111",
+            "package.json": #"{"scripts":{"dev":"vite --port 2222"}}"#,
+            "vite.config.ts": "export default { server: { port: 3333 } };",
+        ]) { folder in
+            let result = ProjectDetector.detect(folder: folder)
+            #expect(result.port == 4242)
+            #expect(result.command == "make dev")
+            #expect(result.suggestedSlug == "agreed")
+            #expect(result.fromSharedFile)
+            #expect(result.sources == [".loca.json (shared by the project)"])
+        }
+    }
+
+    @Test func aSharedFileStillReportsThePackageManager() throws {
+        try withProject([
+            ".loca.json": #"{"version":1,"slug":"agreed","port":4242}"#,
+            "pnpm-lock.yaml": "",
+        ]) { folder in
+            #expect(ProjectDetector.detect(folder: folder).packageManager == "pnpm")
+        }
+    }
+
+    /// A typo in a file somebody else committed must not stop the folder from
+    /// being registered — detection falls back to guessing.
+    @Test func anUnusableSharedFileFallsBackToTheHeuristics() throws {
+        try withProject([
+            ".loca.json": #"{"version":1,"slug":"Bad Slug","port":4242}"#,
+            "package.json": #"{"scripts":{"dev":"vite --port 2222"}}"#,
+        ]) { folder in
+            let result = ProjectDetector.detect(folder: folder)
+            #expect(result.port == 2222)
+            #expect(!result.fromSharedFile)
+            #expect(result.suggestedSlug == nil)
+        }
+    }
+
+    @Test func withoutASharedFileNothingIsSuggested() throws {
+        let result = try detect("vite")
+        #expect(result.suggestedSlug == nil)
+        #expect(!result.fromSharedFile)
+    }
+
     @Test func everyProposedValueNamesTheFileItCameFrom() throws {
         try withProject([
             ".env": "PORT=4321",

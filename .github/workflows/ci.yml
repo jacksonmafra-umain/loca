@@ -34,6 +34,11 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
+      # The same toolchain as the test job, deliberately. The release build is
+      # the stricter of the two — it is where the concurrency checker rejected
+      # code a debug build waved through — so running it on a different
+      # compiler than the tests would defeat the point of pinning either.
+      - uses: ./.github/actions/select-newest-xcode
 
       # The bundle is deliberately not assembled here. `make app` needs a
       # code-signing identity, and putting a certificate into CI to prove the

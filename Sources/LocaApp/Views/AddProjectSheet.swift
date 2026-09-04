@@ -234,16 +234,29 @@ struct AddProjectSheet: View {
     private var detectionCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 8) {
-                Label("DETECTED FROM")
+                Label(detection.fromSharedFile ? "SHARED BY THE PROJECT" : "DETECTED FROM")
                 ForEach(detection.sources, id: \.self) { source in
                     HStack(spacing: 6) {
-                        Image(systemName: "doc.text")
+                        Image(systemName: detection.fromSharedFile ? "checkmark.seal" : "doc.text")
                             .font(.system(size: 9))
-                            .foregroundStyle(Theme.textTertiary)
+                            .foregroundStyle(
+                                detection.fromSharedFile ? Theme.running : Theme.textTertiary)
                         Text(source)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(Theme.textSecondary)
                     }
+                }
+
+                if detection.fromSharedFile {
+                    // Worth saying out loud that the repository asked but did
+                    // not decide: the slug may have been changed to keep it
+                    // unique, and nothing was registered without this sheet.
+                    Text(
+                        "These values were committed to the project, not guessed. The domain is still yours to change, and a name already in use is given a suffix."
+                    )
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -253,7 +266,11 @@ struct AddProjectSheet: View {
 
     private func prepare() {
         detection = ProjectDetector.detect(folder: folder)
-        slug = store.suggestedSlug(for: folder)
+        // A slug the project asked for is still only a suggestion: it goes
+        // through the same uniqueness check as one derived from the folder
+        // name, so a repository cannot take a domain that is already
+        // registered.
+        slug = store.uniqueSlug(detection.suggestedSlug ?? folder.lastPathComponent)
         // A port the user picked from the inspector is a fact, not a guess, so
         // it wins over detection.
         port = (initialPort ?? detection.port).map(String.init) ?? ""

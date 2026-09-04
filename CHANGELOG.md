@@ -13,6 +13,13 @@ breaking change to any of the three means a major version.
 
 ### Added
 
+- `.loca.json`, a file a project can commit so anyone who clones it gets the
+  same domain, port, and start command. It is a **proposal**: the local config
+  always wins, drift is reported rather than applied, the slug still goes
+  through the uniqueness rules, and nothing registers without the add sheet.
+  `autoStart` is deliberately not shareable — "start at login" is about your
+  machine, not the project.
+- `--share-project` and `--read-shared-file` for the same, from a shell.
 - Detection of a project folder that moved or was deleted, with a badge on the
   row, a count in the banner, and an offer to locate it again. The domain keeps
   working — the proxy only needs a port — so nothing else on screen would hint
