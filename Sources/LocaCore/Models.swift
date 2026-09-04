@@ -48,7 +48,7 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
 
     public var domain: String { "\(slug).test" }
     public var wildcardDomain: String { "*.\(slug).test" }
-    public var agentLabel: String { "dev.loca.run.\(slug)" }
+    public var agentLabel: String { Paths.runnerLabel(slug: slug) }
 
     private enum CodingKeys: String, CodingKey {
         case id, slug, folder, port, enabled, runner
