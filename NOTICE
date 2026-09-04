@@ -1,0 +1,17 @@
+Loca
+Copyright (c) 2026 Jackson Mafra
+
+This product bundles the Caddy web server, which is available under the
+Apache License 2.0.
+
+  Caddy — https://caddyserver.com
+  Source — https://github.com/caddyserver/caddy
+  Copyright (c) 2015 Matthew Holt and The Caddy Authors
+
+The Caddy binary is downloaded at build time by `make vendor-caddy`, pinned by
+version and verified against a SHA-256 recorded in the Makefile. It is not
+included in this repository.
+
+Third-party attribution lives here rather than in LICENSE because GitHub's
+licence detection reads that file as a whole, and anything appended to it makes
+the repository's licence unrecognisable.

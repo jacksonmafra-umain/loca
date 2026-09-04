@@ -86,6 +86,6 @@ the `Makefile`, so every step is readable in a diff.
 Built by **[Jackson Mafra](https://github.com/jacksonmafra-umain)**.
 
 Bundles [Caddy](https://caddyserver.com) for TLS and proxying, under its
-Apache 2.0 licence.
+Apache 2.0 licence — see [NOTICE](NOTICE).
 
 Licensed under the [MIT licence](LICENSE). Copyright © 2026 Jackson Mafra.
