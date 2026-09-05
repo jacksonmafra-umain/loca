@@ -28,6 +28,9 @@ struct LocaAppMain: App {
         // minimise, and zoom buttons then float over the content, which is why
         // every pane starts below Theme.titleBarInset.
         .windowStyle(.hiddenTitleBar)
+        // A first launch should not open at whatever size the display allows.
+        // A saved frame still wins, so this only shapes the first impression.
+        .defaultSize(width: 1000, height: 700)
 
         // The menu bar item is what makes closing the window sensible: with a
         // way back and per-project actions a click away, the window stops
