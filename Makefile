@@ -98,6 +98,21 @@ revendor-caddy:
 	rm -f "$(CADDY)"
 	$(MAKE) vendor-caddy
 
+ICONSET := $(BUILD_DIR)/$(APP_NAME).iconset
+ICNS := $(BUILD_DIR)/$(APP_NAME).icns
+
+# Generated rather than committed as a binary, for the same reason there is no
+# Xcode project: an icon nobody can regenerate is an icon nobody can change.
+$(ICNS): Tools/GenerateAppIcon.swift
+	@mkdir -p "$(BUILD_DIR)"
+	swift Tools/GenerateAppIcon.swift "$(ICONSET)"
+	iconutil -c icns "$(ICONSET)" -o "$(ICNS)"
+	rm -rf "$(ICONSET)"
+	@echo "built $(ICNS)"
+
+.PHONY: icon
+icon: $(ICNS)
+
 .PHONY: build
 build:
 	swift build -c $(CONFIG) --product $(APP_BINARY)
@@ -114,7 +129,7 @@ check: test build
 # The layout SMAppService expects: both executables in Contents/MacOS, and the
 # daemon's plist in Contents/Library/LaunchDaemons.
 .PHONY: app
-app: build $(CADDY)
+app: build $(CADDY) $(ICNS)
 	@if [ -z "$(SIGN_ID)" ]; then \
 		echo "error: no codesigning identity found."; \
 		echo "       Install an Apple Development certificate, or pass SIGN_ID=..."; \
@@ -125,6 +140,7 @@ app: build $(CADDY)
 	cp "$(SWIFT_BIN)/$(APP_BINARY)" "$(CONTENTS)/MacOS/$(APP_BINARY)"
 	cp "$(SWIFT_BIN)/$(HELPER_NAME)" "$(CONTENTS)/MacOS/$(HELPER_NAME)"
 	cp "$(CADDY)" "$(CONTENTS)/Resources/caddy"
+	cp "$(ICNS)" "$(CONTENTS)/Resources/$(APP_NAME).icns"
 	cp Resources/Info.plist "$(CONTENTS)/Info.plist"
 	cp Resources/$(HELPER_LABEL).plist "$(CONTENTS)/Library/LaunchDaemons/$(HELPER_LABEL).plist"
 	printf 'APPL????' > "$(CONTENTS)/PkgInfo"
@@ -169,7 +185,7 @@ signing-report:
 	fi
 
 $(DMG): app
-	rm -rf "$(DMG_STAGING)" "$(DMG)"
+	rm -rf "$(DMG_STAGING)" "$(DMG)" "$(BUILD_DIR)/rw.dmg"
 	mkdir -p "$(DMG_STAGING)"
 	cp -R "$(APP)" "$(DMG_STAGING)/"
 	@# The conventional drag-to-install layout: the app beside a shortcut to
@@ -177,9 +193,18 @@ $(DMG): app
 	@# SMAppService will not register a root daemon from a user-writable
 	@# folder — so this is not decoration.
 	ln -s /Applications "$(DMG_STAGING)/Applications"
+	@# The volume gets the app's own icon rather than a blank disk, which is
+	@# the difference between looking finished and looking improvised. It needs
+	@# a writable image and a Finder attribute, so the image is built read-write
+	@# and converted afterwards.
+	cp "$(ICNS)" "$(DMG_STAGING)/.VolumeIcon.icns"
 	hdiutil create -volname "$(APP_NAME)" -srcfolder "$(DMG_STAGING)" \
-		-ov -format UDZO "$(DMG)"
-	rm -rf "$(DMG_STAGING)"
+		-ov -format UDRW "$(BUILD_DIR)/rw.dmg"
+	hdiutil attach "$(BUILD_DIR)/rw.dmg" -nobrowse -mountpoint "$(BUILD_DIR)/mnt"
+	SetFile -a C "$(BUILD_DIR)/mnt"
+	hdiutil detach "$(BUILD_DIR)/mnt" -quiet
+	hdiutil convert "$(BUILD_DIR)/rw.dmg" -format UDZO -o "$(DMG)"
+	rm -rf "$(DMG_STAGING)" "$(BUILD_DIR)/rw.dmg" "$(BUILD_DIR)/mnt"
 	@echo "built $(DMG)"
 
 .PHONY: dmg

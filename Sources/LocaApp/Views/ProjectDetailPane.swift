@@ -17,6 +17,15 @@ struct ProjectDetailPane: View {
     private let paths = Paths()
 
     var body: some View {
+        // The pane's own height is needed to size the log against it, and a
+        // GeometryReader is the only way to learn it. A fixed log height wastes
+        // a tall window and crowds a short one.
+        GeometryReader { proxy in
+            content(availableHeight: proxy.size.height)
+        }
+    }
+
+    private func content(availableHeight: CGFloat) -> some View {
         ScrollView {
             if let project {
                 VStack(alignment: .leading, spacing: 12) {
@@ -27,7 +36,7 @@ struct ProjectDetailPane: View {
                         if runners.unstable.contains(project.id) {
                             unstableCard(project)
                         }
-                        logCard(project)
+                        logCard(project, availableHeight: availableHeight)
                     } else {
                         noRunner
                     }
@@ -288,7 +297,7 @@ struct ProjectDetailPane: View {
         }
     }
 
-    private func logCard(_ project: Project) -> some View {
+    private func logCard(_ project: Project, availableHeight: CGFloat) -> some View {
         Card(padding: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
@@ -307,14 +316,14 @@ struct ProjectDetailPane: View {
 
                 if showingLog {
                     Divider().overlay(Theme.stroke)
-                    logBody(project)
+                    logBody(project, availableHeight: availableHeight)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func logBody(_ project: Project) -> some View {
+    private func logBody(_ project: Project, availableHeight: CGFloat) -> some View {
         if tailer.missingFile {
             Text("No output yet. The log appears once the server writes something.")
                 .font(.system(size: 11))
@@ -340,7 +349,7 @@ struct ProjectDetailPane: View {
                     }
                     .padding(12)
                 }
-                .frame(height: 180)
+                .frame(height: logHeight(for: availableHeight))
                 .onChange(of: tailer.lines.count) { _, count in
                     // Follow the tail, which is the only part anyone is
                     // reading.
@@ -348,6 +357,17 @@ struct ProjectDetailPane: View {
                 }
             }
         }
+    }
+
+    /// How tall the log gets, given the pane's height.
+    ///
+    /// Everything above the log — identity, runner, mapping, shared file — has
+    /// a height the content dictates, so the log is the one card that can
+    /// absorb the extra room a maximised window brings. A third of the pane
+    /// leaves the cards above it visible without scrolling; the floor keeps it
+    /// readable when the window is short, at which point the pane scrolls.
+    private func logHeight(for availableHeight: CGFloat) -> CGFloat {
+        max(180, availableHeight * 0.34)
     }
 
     private var noRunner: some View {

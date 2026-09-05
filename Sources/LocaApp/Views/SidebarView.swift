@@ -95,7 +95,7 @@ struct SidebarView: View {
                 .fill(Theme.accent)
                 .frame(width: 26, height: 26)
                 .overlay(
-                    Image(systemName: "link")
+                    Image(systemName: "lock.fill")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.onAccent))
 

@@ -175,14 +175,21 @@ struct ProjectListView: View {
                 tone: Theme.accentSoft)
         } else {
             HStack(spacing: 14) {
+                // The list stays on the left at a width that fits a domain and
+                // its upstream, and no more. Two flexible columns split a wide
+                // window evenly, which spends half a large display on a list
+                // of short lines.
                 list(projects)
-                    .frame(minWidth: 300)
+                    .frame(minWidth: 260, idealWidth: 330, maxWidth: 380)
+                // Every remaining point, in both directions. This pane holds
+                // the runner controls, the log, the mapping, and the warnings —
+                // it is the half that has something to do with the room.
                 ProjectDetailPane(
                     project: selectedProject(in: projects),
                     store: store,
                     runners: runners,
                     onRemove: { removalCandidate = $0 })
-                    .frame(minWidth: 300)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .padding(.horizontal, 24)
         }

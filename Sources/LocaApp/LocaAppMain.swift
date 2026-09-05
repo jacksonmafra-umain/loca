@@ -13,6 +13,9 @@ struct LocaAppMain: App {
     /// shell commands rather than a list of buttons to click.
     init() {
         CommandLineMode.runIfRequested()
+        // After the flags, never before: --helper-status and its neighbours
+        // have to keep working while a window is open.
+        SingleInstance.enforceOrHandOver()
 
         let helper = HelperClient()
         _helper = State(initialValue: helper)
@@ -28,6 +31,9 @@ struct LocaAppMain: App {
         // minimise, and zoom buttons then float over the content, which is why
         // every pane starts below Theme.titleBarInset.
         .windowStyle(.hiddenTitleBar)
+        // A first launch should not open at whatever size the display allows.
+        // A saved frame still wins, so this only shapes the first impression.
+        .defaultSize(width: 1000, height: 700)
 
         // The menu bar item is what makes closing the window sensible: with a
         // way back and per-project actions a click away, the window stops
@@ -35,7 +41,7 @@ struct LocaAppMain: App {
         MenuBarExtra {
             MenuBarView(store: store, helper: helper, runners: runners)
         } label: {
-            Image(systemName: "link")
+            Image(systemName: "lock.fill")
         }
     }
 }

@@ -157,13 +157,27 @@ struct InspectorView: View {
         }
     }
 
+    /// Column widths.
+    ///
+    /// The flexible one is DETAIL, not OWNER. Owner names are short and a
+    /// process called `node` does not improve with three hundred points of
+    /// room, while a container's image and private port is the value that gets
+    /// truncated — `public.ecr.aws/supabase/postgres:16 → 5432` needs every
+    /// pixel a wide window can spare.
+    private enum Column {
+        static let port: CGFloat = 58
+        static let owner: CGFloat = 300
+        static let domain: CGFloat = 150
+        static let pid: CGFloat = 60
+    }
+
     private var columnHeadings: some View {
         HStack(spacing: 12) {
-            heading("PORT", width: 58)
-            heading("OWNER", width: nil)
-            heading("DETAIL", width: 200)
-            heading("DOMAIN", width: 150)
-            heading("PID", width: 60)
+            heading("PORT", width: Column.port)
+            heading("OWNER", width: Column.owner)
+            heading("DETAIL", width: nil)
+            heading("DOMAIN", width: Column.domain)
+            heading("PID", width: Column.pid)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
@@ -184,7 +198,7 @@ struct InspectorView: View {
             Text(String(row.port))
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(Theme.text)
-                .frame(width: 58, alignment: .leading)
+                .frame(width: Column.port, alignment: .leading)
 
             HStack(spacing: 6) {
                 Image(systemName: row.isContainer ? "shippingbox.fill" : "terminal")
@@ -199,14 +213,14 @@ struct InspectorView: View {
                     Badge(text: "v6", tone: .neutral)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: Column.owner, alignment: .leading)
 
             Text(row.detail ?? "—")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.textTertiary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(width: 200, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Group {
                 if let domain = row.domain {
@@ -220,12 +234,12 @@ struct InspectorView: View {
                         .foregroundStyle(Theme.textTertiary)
                 }
             }
-            .frame(width: 150, alignment: .leading)
+            .frame(width: Column.domain, alignment: .leading)
 
             Text(String(row.pid))
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(Theme.textTertiary)
-                .frame(width: 60, alignment: .leading)
+                .frame(width: Column.pid, alignment: .leading)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
