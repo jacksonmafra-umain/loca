@@ -17,6 +17,15 @@ https://projeto2.test        →  127.0.0.1:2021
 
 ## Install
 
+Download the disk image from
+**[Releases](https://github.com/jacksonmafra-umain/loca/releases/latest)** and
+drag Loca to Applications. It has to live there — a root daemon will not
+register from a user-writable folder.
+
+The build is signed but **not notarized**, so macOS refuses to open it until
+you clear the quarantine flag, and the release notes say exactly how. Building
+it yourself avoids that entirely:
+
 ```sh
 make vendor-caddy     # pinned Caddy, verified by checksum
 make app              # assembles and signs build/Loca.app
@@ -27,7 +36,6 @@ Needs macOS 14, Xcode 26, and any Apple Development signing certificate. Then
 three one-time steps in the Setup pane: install the helper, point `.test` at
 Loca, trust the certificate authority.
 
-Loca is not notarized — the source is public and you build it yourself.
 Full steps, including the Firefox caveat, in
 **[Installing](https://github.com/jacksonmafra-umain/loca/wiki/Installing)**.
 
@@ -65,13 +73,13 @@ ports resolved to their container name — under `lsof` they all read
 | [Troubleshooting](https://github.com/jacksonmafra-umain/loca/wiki/Troubleshooting) | Every failure mode, with the symptom you would see |
 | [Command line](https://github.com/jacksonmafra-umain/loca/wiki/Command-line) | Every flag on the app binary |
 | [Architecture](https://github.com/jacksonmafra-umain/loca/wiki/Architecture) | How it is built, and why |
-| [Distribution](https://github.com/jacksonmafra-umain/loca/wiki/Distribution) | Packaging, notarization, and why there is no download |
+| [Distribution](https://github.com/jacksonmafra-umain/loca/wiki/Distribution) | Packaging the disk image, and what notarization would take |
 | [Uninstalling](https://github.com/jacksonmafra-umain/loca/wiki/Uninstalling) | What is removed, and what is deliberately kept |
 
 ## Development
 
 ```sh
-make test    # 195 tests, no root and no Caddy needed
+make test    # 236 tests, no root and no Caddy needed
 make app     # build and sign
 make run     # build, sign, and launch from build/
 make help    # every target
