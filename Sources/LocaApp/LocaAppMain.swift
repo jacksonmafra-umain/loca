@@ -13,6 +13,9 @@ struct LocaAppMain: App {
     /// shell commands rather than a list of buttons to click.
     init() {
         CommandLineMode.runIfRequested()
+        // After the flags, never before: --helper-status and its neighbours
+        // have to keep working while a window is open.
+        SingleInstance.enforceOrHandOver()
 
         let helper = HelperClient()
         _helper = State(initialValue: helper)
