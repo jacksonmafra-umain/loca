@@ -56,6 +56,18 @@ Only one component runs as root: a helper that binds the two privileged ports
 and owns the resolver file. The GUI, the port inspector, and your servers all
 run as you.
 
+## Public tunnels
+
+![The tunnel card](docs/screenshots/tunnel.png)
+
+A switch on a domain — or on any listening port, from the inspector — opens a
+public address to it with **cloudflared** or **ngrok**, whichever you have
+installed. Requests reach `127.0.0.1:<port>` directly, so the origin sees the
+provider's hostname rather than the `.test` domain.
+
+A tunnel is never remembered and never reopens on its own: quitting Loca closes
+every one it opened. Only the choice of provider is saved.
+
 ## The port inspector
 
 ![The Port Inspector pane](docs/screenshots/inspector.png)
@@ -70,6 +82,7 @@ ports resolved to their container name — under `lsof` they all read
 | --- | --- |
 | [Installing](https://github.com/jacksonmafra-umain/loca/wiki/Installing) | Requirements, building, signing, first run |
 | [Adding domains](https://github.com/jacksonmafra-umain/loca/wiki/Adding-domains) | What the detector reads, and what it does with it |
+| [Public tunnels](https://github.com/jacksonmafra-umain/loca/wiki/Public-tunnels) | Sharing a domain or a port, and what it exposes |
 | [Troubleshooting](https://github.com/jacksonmafra-umain/loca/wiki/Troubleshooting) | Every failure mode, with the symptom you would see |
 | [Command line](https://github.com/jacksonmafra-umain/loca/wiki/Command-line) | Every flag on the app binary |
 | [Architecture](https://github.com/jacksonmafra-umain/loca/wiki/Architecture) | How it is built, and why |
@@ -79,7 +92,7 @@ ports resolved to their container name — under `lsof` they all read
 ## Development
 
 ```sh
-make test    # 236 tests, no root and no Caddy needed
+make test    # 261 tests, no root and no Caddy needed
 make app     # build and sign
 make run     # build, sign, and launch from build/
 make help    # every target
