@@ -87,6 +87,9 @@ struct TunnelCard: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            // Without this the selected segment is the system blue, which is
+            // the only thing in the window that is not from the palette.
+            .tint(Theme.accent)
             // Changing provider mid-tunnel would mean closing one and opening
             // another behind the user's back.
             .disabled(session != nil)
