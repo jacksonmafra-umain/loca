@@ -35,7 +35,7 @@ struct LocaAppMain: App {
         MenuBarExtra {
             MenuBarView(store: store, helper: helper, runners: runners)
         } label: {
-            Image(systemName: "link")
+            Image(systemName: "lock.fill")
         }
     }
 }
