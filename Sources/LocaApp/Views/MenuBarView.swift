@@ -11,6 +11,7 @@ struct MenuBarView: View {
     let store: AppStore
     let helper: HelperClient
     let runners: RunnerController
+    let tunnels: TunnelController
 
     @Environment(\.openWindow) private var openWindow
 
@@ -64,6 +65,20 @@ struct MenuBarView: View {
                 }
             }
 
+            // A tunnel can be closed from here but never opened: opening one
+            // publishes this machine, and that asks first, in the window where
+            // the warning is readable.
+            if let session = tunnels.session(forPort: project.port) {
+                Divider()
+                if let url = session.url {
+                    Button("Copy \(url)") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(url, forType: .string)
+                    }
+                }
+                Button("Close public tunnel") { tunnels.stop(port: project.port) }
+            }
+
             Divider()
 
             Button("Reveal in Finder") {
@@ -76,6 +91,9 @@ struct MenuBarView: View {
     /// A glyph rather than a coloured shape, because a menu bar menu renders
     /// its titles as plain text and a `Circle` would not survive.
     private func statusDot(_ project: Project) -> String {
+        // A public tunnel outranks every other state: it is the one thing a
+        // glance at the menu bar should never miss.
+        if tunnels.session(forPort: project.port)?.url != nil { return "◉" }
         if !project.enabled { return "○" }
         if runners.unstable.contains(project.id) { return "✕" }
         guard project.runner != nil else { return "●" }

@@ -7,6 +7,7 @@ struct ProjectDetailPane: View {
     let project: Project?
     let store: AppStore
     let runners: RunnerController
+    let tunnels: TunnelController
     var onRemove: (Project) -> Void
 
     @State private var tailer = LogTailer()
@@ -41,6 +42,7 @@ struct ProjectDetailPane: View {
                         noRunner
                     }
                     mapping(project)
+                    TunnelCard(project: project, store: store, tunnels: tunnels)
                     sharedFile(project)
                     conflicts(project)
                     Spacer(minLength: 0)

@@ -6,6 +6,7 @@ struct LocaAppMain: App {
     @State private var helper: HelperClient
     @State private var store: AppStore
     @State private var runners = RunnerController()
+    @State private var tunnels = TunnelController()
 
     /// `SMAppService` can only be called from inside the signed bundle, so
     /// registering the helper has to go through this binary. Handling a couple
@@ -24,7 +25,7 @@ struct LocaAppMain: App {
 
     var body: some Scene {
         Window("Loca", id: "main") {
-            RootView(helper: helper, store: store, runners: runners)
+            RootView(helper: helper, store: store, runners: runners, tunnels: tunnels)
                 .frame(minWidth: 960, minHeight: 640)
         }
         // No title bar, so the sidebar runs to the top edge. The close,
@@ -39,7 +40,7 @@ struct LocaAppMain: App {
         // way back and per-project actions a click away, the window stops
         // being the app and becomes one view of it.
         MenuBarExtra {
-            MenuBarView(store: store, helper: helper, runners: runners)
+            MenuBarView(store: store, helper: helper, runners: runners, tunnels: tunnels)
         } label: {
             Image(systemName: "lock.fill")
         }
@@ -50,6 +51,7 @@ struct RootView: View {
     let helper: HelperClient
     let store: AppStore
     let runners: RunnerController
+    let tunnels: TunnelController
 
     @State private var section: Section = Section.lastSelected
     @State private var checkedGates = false
@@ -99,11 +101,11 @@ struct RootView: View {
         switch section {
         case .domains:
             ProjectListView(
-                store: store, helper: helper, runners: runners,
+                store: store, helper: helper, runners: runners, tunnels: tunnels,
                 pendingPort: $pendingPort, pendingSlug: $pendingSlug)
         case .inspector:
             if let inspector {
-                InspectorView(inspector: inspector, store: store) { port in
+                InspectorView(inspector: inspector, store: store, tunnels: tunnels) { port in
                     // The inspector knows the port; the domains pane asks for
                     // the folder.
                     pendingPort = port
