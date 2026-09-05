@@ -11,6 +11,36 @@ breaking change to any of the three means a major version.
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-09-05
+
+### Added
+
+- An app icon. A padlock, drawn by `Tools/GenerateAppIcon.swift` and built by
+  `make icon`, rather than committed as a binary: an asset nobody can
+  regenerate is an asset nobody can change. The DMG volume gets the same icon.
+- The in-app mark follows it — sidebar, About card, and menu bar now all show
+  the padlock instead of a link glyph.
+
+### Changed
+
+- A wide window now spends its width on the detail pane. The domain list is
+  capped at 380pt, which is enough for a domain and its upstream, and the log
+  grows with the pane's height instead of staying at 180pt.
+- The port inspector's flexible column is DETAIL rather than OWNER. A process
+  called `node` does not improve with three hundred points of room, while a
+  container's image and private port is the value that was being truncated.
+- A first launch opens at 1000x700 rather than whatever the display allows. A
+  saved window frame still wins.
+
+### Fixed
+
+- Only one copy of the app runs at a time. `open -n`, a build folder alongside
+  `/Applications`, and running the executable directly all bypassed
+  LaunchServices' reuse, and two instances poll the same helper, drive the same
+  launchd agents, and write the same `config.json` — last writer wins, so a
+  domain added in one window could vanish when the other saved. A second launch
+  now activates the first and exits.
+
 ## [1.2.0] — 2026-09-05
 
 The four things the design document deferred. Three are done; the fourth is
@@ -302,7 +332,8 @@ binary.
 - Crash-loop detection: three restarts within 60 seconds marks a runner
   unstable.
 
-[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/jacksonmafra-umain/loca/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/jacksonmafra-umain/loca/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/jacksonmafra-umain/loca/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/jacksonmafra-umain/loca/compare/v1.0.0...v1.1.0
