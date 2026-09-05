@@ -50,6 +50,35 @@ struct ModelsTests {
         #expect(decoded.runner == nil)
     }
 
+    /// A config written before tunnels existed has no such key, and refusing
+    /// to read it would lose every registration the user has.
+    @Test func aProjectFromBeforeTunnelsStillDecodes() throws {
+        let json = """
+            {"id":"6BC1D7FE-2B2E-4E3E-9A1C-9E0B4D4B0F11","slug":"api",
+             "folder":"/tmp/api","port":8080,"enabled":true}
+            """
+        let decoded = try JSONDecoder().decode(Project.self, from: Data(json.utf8))
+        #expect(decoded.tunnelProvider == nil)
+        #expect(decoded.slug == "api")
+    }
+
+    @Test func theChosenProviderSurvivesARoundTrip() throws {
+        let project = Project(
+            slug: "api", folder: URL(filePath: "/tmp/api"), port: 8080,
+            tunnelProvider: .ngrok)
+        let decoded = try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(project))
+        #expect(decoded.tunnelProvider == .ngrok)
+        #expect(decoded == project)
+    }
+
+    /// Nothing in the file says a tunnel was open, because nothing may reopen
+    /// one without being asked.
+    @Test func noProviderMeansNoKeyInTheFile() throws {
+        let project = Project(slug: "api", folder: URL(filePath: "/tmp/api"), port: 8080)
+        let json = String(decoding: try JSONEncoder().encode(project), as: UTF8.self)
+        #expect(!json.contains("tunnel"))
+    }
+
     @Test func runnerDefaultsToSupervisedButNotAutoStarted() {
         let runner = Runner(command: "npm run dev")
         #expect(runner.autoStart == false)

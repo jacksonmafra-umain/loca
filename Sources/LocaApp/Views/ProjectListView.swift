@@ -10,6 +10,7 @@ struct ProjectListView: View {
     let store: AppStore
     let helper: HelperClient
     let runners: RunnerController
+    let tunnels: TunnelController
     /// A port handed over by the inspector, waiting for a folder to go with it.
     @Binding var pendingPort: Int?
     /// A slug handed over by the setup pane, migrating a hosts entry.
@@ -188,6 +189,7 @@ struct ProjectListView: View {
                     project: selectedProject(in: projects),
                     store: store,
                     runners: runners,
+                    tunnels: tunnels,
                     onRemove: { removalCandidate = $0 })
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

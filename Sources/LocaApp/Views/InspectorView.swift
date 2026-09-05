@@ -10,10 +10,12 @@ import SwiftUI
 struct InspectorView: View {
     let inspector: InspectorController
     let store: AppStore
+    let tunnels: TunnelController
     /// Opens the add sheet prefilled with a port.
     var onCreateDomain: (Int) -> Void
 
     @State private var killCandidate: InspectorRow?
+    @State private var tunnelCandidate: InspectorRow?
     @State private var actionError: String?
 
     var body: some View {
@@ -41,6 +43,24 @@ struct InspectorView: View {
             if let row = killCandidate {
                 Text(
                     "pid \(String(row.pid)) gets SIGTERM, then SIGKILL five seconds later if it is still running. Unsaved work in that process is lost."
+                )
+            }
+        }
+        .confirmationDialog(
+            tunnelCandidate.map { "Put port \(String($0.port)) on the public internet?" } ?? "",
+            isPresented: .init(
+                get: { tunnelCandidate != nil },
+                set: { if !$0 { tunnelCandidate = nil } })
+        ) {
+            Button("Open the tunnel") {
+                if let row = tunnelCandidate { openTunnel(row) }
+                tunnelCandidate = nil
+            }
+            Button("Cancel", role: .cancel) { tunnelCandidate = nil }
+        } message: {
+            if let row = tunnelCandidate {
+                Text(
+                    "Anyone with the address it hands out reaches 127.0.0.1:\(String(row.port)) on this machine, which right now is \(row.owner). It closes when you turn it off or quit Loca."
                 )
             }
         }
@@ -212,6 +232,9 @@ struct InspectorView: View {
                 if row.family == .ipv6 {
                     Badge(text: "v6", tone: .neutral)
                 }
+                if tunnels.session(forPort: row.port) != nil {
+                    Badge(text: "public", tone: .danger, systemImage: "globe")
+                }
             }
             .frame(width: Column.owner, alignment: .leading)
 
@@ -256,6 +279,22 @@ struct InspectorView: View {
                     }
                 }
             }
+            Divider()
+
+            if let session = tunnels.session(forPort: row.port) {
+                if let url = session.url {
+                    Button("Copy \(url)") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(url, forType: .string)
+                    }
+                }
+                Button("Close public tunnel") { tunnels.stop(port: row.port) }
+            } else if !tunnels.installedProviders.isEmpty {
+                Button("Share port \(String(row.port)) publicly…") { tunnelCandidate = row }
+            }
+
+            Divider()
+
             Button("Reveal working folder") { inspector.revealFolder(row) }
             Button("Copy pid") {
                 NSPasteboard.general.clearContents()
@@ -267,6 +306,23 @@ struct InspectorView: View {
     }
 
     // MARK: - Behaviour
+
+    /// Uses the domain's chosen provider when the port belongs to one, so the
+    /// inspector and the detail pane never disagree about which program opens
+    /// a tunnel for a given project.
+    private func openTunnel(_ row: InspectorRow) {
+        let project = store.projects.first { $0.port == row.port }
+        let provider =
+            project?.tunnelProvider ?? tunnels.installedProviders.first ?? .cloudflared
+        do {
+            try tunnels.start(
+                port: row.port, provider: provider,
+                label: project?.domain ?? "port \(String(row.port))")
+            actionError = nil
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
 
     private func kill(_ row: InspectorRow) {
         Task {

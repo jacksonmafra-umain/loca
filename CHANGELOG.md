@@ -11,6 +11,21 @@ breaking change to any of the three means a major version.
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-09-05
+
+### Added
+
+- **Public tunnels.** A switch on a domain — or on any listening port, from the
+  Port Inspector — opens a public address to it with cloudflared or ngrok,
+  whichever is installed. The provider is remembered per project; whether a
+  tunnel is *open* is never written down, and quitting Loca closes every one it
+  opened.
+- The tunnel card says the thing that surprises people: requests arrive with the
+  provider's hostname in `Host`, not the `.test` domain, so a server with a host
+  allowlist refuses them until that address is added.
+- The menu bar shows a `◉` beside a domain that is currently public, and can
+  copy its address or close it.
+
 ## [1.3.0] — 2026-09-05
 
 ### Added
@@ -332,7 +347,8 @@ binary.
 - Crash-loop detection: three restarts within 60 seconds marks a runner
   unstable.
 
-[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/jacksonmafra-umain/loca/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/jacksonmafra-umain/loca/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/jacksonmafra-umain/loca/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/jacksonmafra-umain/loca/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/jacksonmafra-umain/loca/compare/v1.1.0...v1.1.1

@@ -29,6 +29,14 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     /// Whether the domain is currently served by the proxy.
     public var enabled: Bool
     public var runner: Runner?
+    /// Which program opens a public tunnel for this project, when one is asked
+    /// for.
+    ///
+    /// Only the preference is stored. Whether a tunnel is *open* is not: a
+    /// tunnel publishes a local server to the internet, and something that
+    /// consequential should never come back on its own because it was on when
+    /// the app last quit.
+    public var tunnelProvider: TunnelProvider?
 
     public init(
         id: UUID = UUID(),
@@ -36,7 +44,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
         folder: URL,
         port: Int,
         enabled: Bool = true,
-        runner: Runner? = nil
+        runner: Runner? = nil,
+        tunnelProvider: TunnelProvider? = nil
     ) {
         self.id = id
         self.slug = slug
@@ -44,6 +53,7 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
         self.port = port
         self.enabled = enabled
         self.runner = runner
+        self.tunnelProvider = tunnelProvider
     }
 
     public var domain: String { "\(slug).test" }
@@ -62,7 +72,7 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
     public var portText: String { String(port) }
 
     private enum CodingKeys: String, CodingKey {
-        case id, slug, folder, port, enabled, runner
+        case id, slug, folder, port, enabled, runner, tunnelProvider
     }
 
     /// `folder` is stored as a plain path rather than a URL so that `config.json`
@@ -76,6 +86,8 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
         port = try container.decode(Int.self, forKey: .port)
         enabled = try container.decode(Bool.self, forKey: .enabled)
         runner = try container.decodeIfPresent(Runner.self, forKey: .runner)
+        tunnelProvider = try container.decodeIfPresent(
+            TunnelProvider.self, forKey: .tunnelProvider)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -86,6 +98,7 @@ public struct Project: Codable, Identifiable, Hashable, Sendable {
         try container.encode(port, forKey: .port)
         try container.encode(enabled, forKey: .enabled)
         try container.encodeIfPresent(runner, forKey: .runner)
+        try container.encodeIfPresent(tunnelProvider, forKey: .tunnelProvider)
     }
 }
 
