@@ -21,6 +21,11 @@ breaking change to any of the three means a major version.
   now runs through `zsh -ilc`, and the app additionally asks the shell for its
   `PATH` and writes the answer into the agent, which covers a `~/.zshrc` that
   bails out when it has no terminal.
+- Editing a project's command, port or folder takes effect on the next start.
+  `launchctl kickstart` restarts the definition launchd is holding and does not
+  re-read the plist, so a started project kept running its previous settings —
+  with the file on disk saying otherwise — until the next login. A changed plist
+  is now booted out and bootstrapped.
 
 ## [1.4.0] — 2026-09-05
 

@@ -23,8 +23,13 @@ enum RunnerAgent {
 
     // MARK: - Commands
 
-    /// Writes the agent plist, then bootstraps it — or kickstarts it when the
-    /// label is already loaded, since `bootstrap` on a loaded label fails.
+    /// Writes the agent plist, then loads it — booting the old one out first
+    /// whenever the file changed.
+    ///
+    /// `kickstart` restarts the definition launchd already holds; it does not
+    /// re-read the plist. Reusing it after an edit is how a project keeps
+    /// running its previous command, port or folder until the next login, with
+    /// the file on disk saying otherwise the whole time.
     static func start(_ project: Project, paths: Paths) throws {
         guard let runner = project.runner else { throw RunnerError.missingRunner }
 
@@ -42,16 +47,21 @@ enum RunnerAgent {
             at: paths.launchAgentsDirectory, withIntermediateDirectories: true)
 
         let plist = paths.runnerPlist(slug: project.slug)
-        try LaunchAgentPlist.data(
+        let data = try LaunchAgentPlist.data(
             for: project, runner: runner, paths: paths,
-            loginPath: LoginShellPathProbe.capture()
-        ).write(to: plist)
+            loginPath: LoginShellPathProbe.capture())
+        let unchanged = (try? Data(contentsOf: plist)) == data
+        try data.write(to: plist)
 
-        if status(for: project).state == .notLoaded {
-            try run("bootstrap", ["bootstrap", domainTarget, plist.path(percentEncoded: false)])
-        } else {
+        let loaded = status(for: project).state != .notLoaded
+        if loaded && unchanged {
             try run("kickstart", ["kickstart", "-k", serviceTarget(for: project)])
+            return
         }
+        if loaded {
+            try stop(project)
+        }
+        try bootstrap(plist)
     }
 
     /// `bootout` tears down the whole process group.
@@ -84,6 +94,23 @@ enum RunnerAgent {
     }
 
     // MARK: - Plumbing
+
+    /// `bootout` returns before launchd has finished unloading the label, and a
+    /// `bootstrap` that lands in that window fails with "service already
+    /// loaded". Retrying is the documented way through it; there is no wait-for
+    /// verb to use instead.
+    private static func bootstrap(_ plist: URL) throws {
+        let arguments = ["bootstrap", domainTarget, plist.path(percentEncoded: false)]
+        for attempt in 0..<10 {
+            let result = launchctl(arguments)
+            if result.status == 0 { return }
+            guard attempt < 9, result.output.contains("already loaded") else {
+                throw RunnerError.launchctlFailed(
+                    command: "bootstrap", status: result.status, output: result.output)
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
 
     private static func run(_ label: String, _ arguments: [String]) throws {
         let result = launchctl(arguments)
