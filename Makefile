@@ -101,11 +101,21 @@ revendor-caddy:
 ICONSET := $(BUILD_DIR)/$(APP_NAME).iconset
 ICNS := $(BUILD_DIR)/$(APP_NAME).icns
 
+ICON_TOOL := $(BUILD_DIR)/generate-app-icon
+
+# Compiled rather than run as a script. `swift <file>` goes through the
+# interpreter, whose JIT resolves Objective-C classes lazily and cannot find
+# NSBitmapImageRep — the generator then dies with a wall of mangled symbol
+# names before it draws anything. Compiling costs a second and works.
+$(ICON_TOOL): Tools/GenerateAppIcon.swift
+	@mkdir -p "$(BUILD_DIR)"
+	swiftc "$<" -o "$@"
+
 # Generated rather than committed as a binary, for the same reason there is no
 # Xcode project: an icon nobody can regenerate is an icon nobody can change.
-$(ICNS): Tools/GenerateAppIcon.swift
+$(ICNS): $(ICON_TOOL)
 	@mkdir -p "$(BUILD_DIR)"
-	swift Tools/GenerateAppIcon.swift "$(ICONSET)"
+	"$(ICON_TOOL)" "$(ICONSET)"
 	iconutil -c icns "$(ICONSET)" -o "$(ICNS)"
 	rm -rf "$(ICONSET)"
 	@echo "built $(ICNS)"

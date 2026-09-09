@@ -11,6 +11,14 @@ breaking change to any of the three means a major version.
 
 ## [Unreleased]
 
+### Fixed
+
+- `make icon` builds again, and with it `make app`, `make install` and
+  `make release`. The rule ran the generator as a script, and `swift <file>`
+  goes through the interpreter, whose JIT could not resolve
+  `NSBitmapImageRep` — the build died on a wall of mangled symbol names
+  before an image was drawn. The generator is compiled first now.
+
 ### Added
 
 - The log is dated. Lines that arrive while the log is open carry the time
