@@ -11,6 +11,23 @@ breaking change to any of the three means a major version.
 
 ## [Unreleased]
 
+### Added
+
+- The log is dated. Lines that arrive while the log is open carry the time
+  Loca saw them, and the card's header shows when the file was last written
+  to — which is what tells you that a log ending in `command not found` is
+  describing half an hour ago rather than the start you just pressed. The
+  backlog read on open carries no per-line time, because launchd writes the
+  server's output straight to the file and records none; an invented one
+  would make old output look current, which is the confusion timestamps are
+  here to prevent.
+- A selection in the log can cross lines. Each line used to be its own text
+  element, and a selection could not leave one — useless for the stack trace
+  that is the usual reason to reach for a log at all.
+- **Clear** on the log card empties the log file, not just the view. Clearing
+  only what is on screen is a lie the next open corrects, since the tail is
+  read back from the file.
+
 ### Fixed
 
 - A project whose toolchain comes from nvm, pnpm, rbenv or pyenv now starts.
