@@ -5,7 +5,8 @@ import Foundation
 /// A `nil` runner on a `Project` means the user starts the server themselves and
 /// Loca only proxies the port.
 public struct Runner: Codable, Hashable, Sendable {
-    /// Run verbatim through a login shell, so nvm and `PATH` resolve.
+    /// Run verbatim through an interactive login shell, so nvm and `PATH`
+    /// resolve. See `LoginShellPath` for why interactive is the operative word.
     public var command: String
     /// Maps to `RunAtLoad`: start at the user's login.
     public var autoStart: Bool

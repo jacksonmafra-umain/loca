@@ -11,6 +11,17 @@ breaking change to any of the three means a major version.
 
 ## [Unreleased]
 
+### Fixed
+
+- A project whose toolchain comes from nvm, pnpm, rbenv or pyenv now starts.
+  Agents ran `zsh -lc`, and a non-interactive shell never reads `~/.zshrc`,
+  which is where all four install themselves — so `npm` worked, because Homebrew
+  is in `/etc/paths`, and `pnpm dev` died with `command not found` in a log that
+  offered no reason why one project ran and its neighbour did not. The command
+  now runs through `zsh -ilc`, and the app additionally asks the shell for its
+  `PATH` and writes the answer into the agent, which covers a `~/.zshrc` that
+  bails out when it has no terminal.
+
 ## [1.4.0] — 2026-09-05
 
 ### Added

@@ -42,7 +42,10 @@ enum RunnerAgent {
             at: paths.launchAgentsDirectory, withIntermediateDirectories: true)
 
         let plist = paths.runnerPlist(slug: project.slug)
-        try LaunchAgentPlist.data(for: project, runner: runner, paths: paths).write(to: plist)
+        try LaunchAgentPlist.data(
+            for: project, runner: runner, paths: paths,
+            loginPath: LoginShellPathProbe.capture()
+        ).write(to: plist)
 
         if status(for: project).state == .notLoaded {
             try run("bootstrap", ["bootstrap", domainTarget, plist.path(percentEncoded: false)])
