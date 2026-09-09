@@ -11,6 +11,45 @@ breaking change to any of the three means a major version.
 
 ## [Unreleased]
 
+### Added
+
+- The log is dated. Lines that arrive while the log is open carry the time
+  Loca saw them, and the card's header shows when the file was last written
+  to — which is what tells you that a log ending in `command not found` is
+  describing half an hour ago rather than the start you just pressed. The
+  backlog read on open carries no per-line time, because launchd writes the
+  server's output straight to the file and records none; an invented one
+  would make old output look current, which is the confusion timestamps are
+  here to prevent.
+- A selection in the log can cross lines. Each line used to be its own text
+  element, and a selection could not leave one — useless for the stack trace
+  that is the usual reason to reach for a log at all.
+- **Clear** on the log card empties the log file, not just the view. Clearing
+  only what is on screen is a lie the next open corrects, since the tail is
+  read back from the file.
+- A runner's command can be edited after the project is created. It was
+  write-once: the detail pane showed it as fixed text and there was no
+  command-line equivalent, so correcting a typo meant hand-editing the
+  project's `.loca.json` and adopting it back, or deleting the project and
+  adding it again. Saving while the server is running reloads the agent, so
+  the new command takes effect rather than waiting for the next login.
+
+### Fixed
+
+- A project whose toolchain comes from nvm, pnpm, rbenv or pyenv now starts.
+  Agents ran `zsh -lc`, and a non-interactive shell never reads `~/.zshrc`,
+  which is where all four install themselves — so `npm` worked, because Homebrew
+  is in `/etc/paths`, and `pnpm dev` died with `command not found` in a log that
+  offered no reason why one project ran and its neighbour did not. The command
+  now runs through `zsh -ilc`, and the app additionally asks the shell for its
+  `PATH` and writes the answer into the agent, which covers a `~/.zshrc` that
+  bails out when it has no terminal.
+- Editing a project's command, port or folder takes effect on the next start.
+  `launchctl kickstart` restarts the definition launchd is holding and does not
+  re-read the plist, so a started project kept running its previous settings —
+  with the file on disk saying otherwise — until the next login. A changed plist
+  is now booted out and bootstrapped.
+
 ## [1.4.0] — 2026-09-05
 
 ### Added

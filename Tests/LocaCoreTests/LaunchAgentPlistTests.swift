@@ -10,12 +10,14 @@ struct LaunchAgentPlistTests {
         slug: "projeto1", folder: URL(filePath: "/Users/test/code/projeto1"), port: 2020)
 
     private func dictionary(
-        command: String = "pnpm dev", autoStart: Bool = false, keepAlive: Bool = true
+        command: String = "pnpm dev", autoStart: Bool = false, keepAlive: Bool = true,
+        loginPath: String? = nil
     ) -> [String: Any] {
         LaunchAgentPlist.dictionary(
             for: project,
             runner: Runner(command: command, autoStart: autoStart, keepAlive: keepAlive),
-            paths: paths)
+            paths: paths,
+            loginPath: loginPath)
     }
 
     @Test func theLabelMatchesTheProjectAgentLabel() {
@@ -23,12 +25,13 @@ struct LaunchAgentPlistTests {
         #expect(dictionary()["Label"] as? String == project.agentLabel)
     }
 
-    /// The login shell is what resolves nvm and PATH. A GUI-spawned process
-    /// inherits neither, so the command has to go through `zsh -lc`.
-    @Test func theCommandRunsThroughALoginShell() {
+    /// Interactive as well as login: `-l` alone skips `~/.zshrc`, which is
+    /// where nvm and pnpm put themselves, so a `-lc` agent resolves Homebrew's
+    /// `npm` and nothing else.
+    @Test func theCommandRunsThroughAnInteractiveLoginShell() {
         #expect(
             dictionary(command: "pnpm dev")["ProgramArguments"] as? [String] == [
-                "/bin/zsh", "-lc", "pnpm dev",
+                "/bin/zsh", "-ilc", "pnpm dev",
             ])
     }
 
@@ -70,6 +73,25 @@ struct LaunchAgentPlistTests {
         #expect(environment == ["LOCA_SLUG": "projeto1", "PORT": "2020"])
     }
 
+    /// The belt to the interactive shell's braces: a `~/.zshrc` that bails out
+    /// without a terminal leaves the agent on launchd's four-entry default, and
+    /// a captured PATH still gets the project its toolchain.
+    @Test func aCapturedLoginPathGoesIntoTheEnvironment() {
+        let environment =
+            dictionary(loginPath: "/opt/homebrew/bin:/usr/bin")["EnvironmentVariables"]
+            as? [String: String]
+        #expect(environment?["PATH"] == "/opt/homebrew/bin:/usr/bin")
+    }
+
+    /// Writing an empty PATH would be worse than writing none: launchd's own
+    /// default at least has `/usr/bin` in it.
+    @Test func anEmptyOrAbsentLoginPathLeavesPATHUnset() {
+        #expect((dictionary()["EnvironmentVariables"] as? [String: String])?["PATH"] == nil)
+        #expect(
+            (dictionary(loginPath: "")["EnvironmentVariables"] as? [String: String])?["PATH"]
+                == nil)
+    }
+
     @Test func serializedDataDecodesBackToTheSameKeys() throws {
         let data = try LaunchAgentPlist.data(
             for: project, runner: Runner(command: "pnpm dev", autoStart: true), paths: paths)
@@ -78,7 +100,7 @@ struct LaunchAgentPlistTests {
         let plist = try #require(decoded)
         #expect(plist["Label"] as? String == "dev.loca.run.projeto1")
         #expect(plist["RunAtLoad"] as? Bool == true)
-        #expect(plist["ProgramArguments"] as? [String] == ["/bin/zsh", "-lc", "pnpm dev"])
+        #expect(plist["ProgramArguments"] as? [String] == ["/bin/zsh", "-ilc", "pnpm dev"])
         #expect(plist["KeepAlive"] as? [String: Bool] == ["SuccessfulExit": false])
     }
 
@@ -102,6 +124,6 @@ struct LaunchAgentPlistTests {
         let plist =
             try #require(
                 PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
-        #expect(plist["ProgramArguments"] as? [String] == ["/bin/zsh", "-lc", "yarn dev"])
+        #expect(plist["ProgramArguments"] as? [String] == ["/bin/zsh", "-ilc", "yarn dev"])
     }
 }

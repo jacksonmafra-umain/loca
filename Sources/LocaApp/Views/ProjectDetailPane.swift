@@ -13,6 +13,9 @@ struct ProjectDetailPane: View {
     @State private var tailer = LogTailer()
     @State private var runnerError: String?
     @State private var sharedFileError: String?
+    @State private var logError: String?
+    /// The command being edited, or nil when the row is just showing it.
+    @State private var commandDraft: String?
     @State private var showingLog = true
 
     private let paths = Paths()
@@ -205,7 +208,7 @@ struct ProjectDetailPane: View {
                 }
 
                 if let runner = project.runner {
-                    detailRow("Command", runner.command, monospaced: true)
+                    commandRow(project, command: runner.command)
                     Toggle("Start at login", isOn: autoStartBinding(project))
                         .toggleStyle(.checkbox)
                         .tint(Theme.accent)
@@ -246,6 +249,95 @@ struct ProjectDetailPane: View {
                         .foregroundStyle(Theme.danger)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+        }
+    }
+
+    /// The command, editable in place.
+    ///
+    /// Behind an explicit Edit rather than a live field: this one string is what
+    /// launchd runs, and a stray keystroke in a field that saves as you type is
+    /// a dev server that stops working for a reason nothing on screen explains.
+    @ViewBuilder
+    private func commandRow(_ project: Project, command: String) -> some View {
+        if let draft = commandDraft {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 10) {
+                    Text("Command")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+                        .frame(width: 76, alignment: .leading)
+                    TextField(
+                        "",
+                        text: Binding(get: { draft }, set: { commandDraft = $0 })
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .onSubmit { saveCommand(project) }
+                }
+                HStack(spacing: 8) {
+                    Spacer().frame(width: 76)
+                    Button("Save") { saveCommand(project) }
+                        .buttonStyle(.accent)
+                        .disabled(
+                            draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button("Cancel") { commandDraft = nil }
+                        .buttonStyle(.quiet)
+                }
+                // It is written to the plist, and the plist is read at start.
+                if runners.status(for: project).isRunning {
+                    HStack(spacing: 6) {
+                        Spacer().frame(width: 70)
+                        Text("Saving restarts the server so the new command takes effect.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        } else {
+            HStack(alignment: .top, spacing: 10) {
+                Text("Command")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+                    .frame(width: 76, alignment: .leading)
+                Text(command)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button("Edit") { commandDraft = command }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.accent)
+            }
+        }
+    }
+
+    private func saveCommand(_ project: Project) {
+        guard let draft = commandDraft?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !draft.isEmpty, draft != project.runner?.command
+        else {
+            commandDraft = nil
+            return
+        }
+
+        Task {
+            var changed = project
+            changed.runner?.command = draft
+            do {
+                try await store.update(changed)
+                commandDraft = nil
+                runnerError = nil
+                // The command lives in the plist, which launchd read at load,
+                // so a running server keeps the old one until the agent is
+                // reloaded.
+                if runners.status(for: changed).isRunning {
+                    try runners.start(changed)
+                }
+            } catch {
+                runnerError = error.localizedDescription
             }
         }
     }
@@ -302,12 +394,30 @@ struct ProjectDetailPane: View {
     private func logCard(_ project: Project, availableHeight: CGFloat) -> some View {
         Card(padding: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
+                HStack(spacing: 10) {
                     Text("LOG")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.6)
                         .foregroundStyle(Theme.textTertiary)
+
+                    // The one date that covers the undated backlog. A log whose
+                    // last write was half an hour ago is not describing what
+                    // just happened, however current its last line reads.
+                    if let lastWrite = tailer.lastWrite {
+                        Text("last write \(Self.clock.string(from: lastWrite))")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+
                     Spacer()
+
+                    if showingLog && !tailer.lines.isEmpty {
+                        Button("Clear") { clearLog() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textTertiary)
+                            .help("Empties the log file itself, not just this view.")
+                    }
                     Button(showingLog ? "Hide" : "Show") { showingLog.toggle() }
                         .buttonStyle(.plain)
                         .font(.system(size: 11))
@@ -319,6 +429,15 @@ struct ProjectDetailPane: View {
                 if showingLog {
                     Divider().overlay(Theme.stroke)
                     logBody(project, availableHeight: availableHeight)
+                }
+
+                if let logError {
+                    Text(logError)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 11)
                 }
             }
         }
@@ -339,25 +458,70 @@ struct ProjectDetailPane: View {
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(Array(tailer.lines.enumerated()), id: \.offset) { index, line in
-                            Text(line)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(Theme.textSecondary)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(index)
-                        }
+                    VStack(alignment: .leading, spacing: 0) {
+                        // One Text rather than one per line: SwiftUI scopes a
+                        // selection to a single Text, so a stack of them lets
+                        // the user select within a line and never across two —
+                        // which is useless for a stack trace, the thing people
+                        // most want out of a log.
+                        Text(transcript)
+                            .font(.system(size: 10, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Color.clear.frame(height: 1).id(Self.tailAnchor)
                     }
                     .padding(12)
                 }
                 .frame(height: logHeight(for: availableHeight))
-                .onChange(of: tailer.lines.count) { _, count in
+                .onChange(of: tailer.lines.count) { _, _ in
                     // Follow the tail, which is the only part anyone is
                     // reading.
-                    proxy.scrollTo(count - 1, anchor: .bottom)
+                    proxy.scrollTo(Self.tailAnchor, anchor: .bottom)
                 }
             }
+        }
+    }
+
+    private static let tailAnchor = "log-tail"
+
+    private static let clock: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
+
+    /// The whole tail as one selectable run of text.
+    ///
+    /// Lines the tailer watched arrive carry the time it saw them. The backlog
+    /// read at open carries blanks instead of an invented time — launchd writes
+    /// the server's output straight to the file and records no per-line time,
+    /// and a made-up one would make old output look current. The header's last
+    /// write date is what dates that part.
+    private var transcript: AttributedString {
+        let blank = String(repeating: " ", count: 8)
+        var out = AttributedString()
+
+        for (index, line) in tailer.lines.enumerated() {
+            if index > 0 { out += AttributedString("\n") }
+
+            var stamp = AttributedString(
+                (line.arrived.map(Self.clock.string(from:)) ?? blank) + "  ")
+            stamp.foregroundColor = Theme.textTertiary
+            out += stamp
+
+            var text = AttributedString(line.text)
+            text.foregroundColor = Theme.textSecondary
+            out += text
+        }
+        return out
+    }
+
+    private func clearLog() {
+        do {
+            try tailer.clear()
+            logError = nil
+        } catch {
+            logError = "could not empty the log: " + error.localizedDescription
         }
     }
 

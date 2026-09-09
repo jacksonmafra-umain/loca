@@ -13,22 +13,27 @@ public enum LaunchAgentPlistError: Error, Equatable, Sendable {
 /// down the whole process group instead of leaving an orphan on the port.
 public enum LaunchAgentPlist {
     public static func dictionary(
-        for project: Project, runner: Runner, paths: Paths
+        for project: Project, runner: Runner, paths: Paths, loginPath: String? = nil
     ) -> [String: Any] {
+        var environment = [
+            "LOCA_SLUG": project.slug,
+            "PORT": String(project.port),
+        ]
+        // launchd's own default is /usr/bin:/bin:/usr/sbin:/sbin, which has no
+        // nvm, no pnpm and no Homebrew in it. See `LoginShellPath`.
+        if let loginPath, !loginPath.isEmpty {
+            environment["PATH"] = loginPath
+        }
+
         var plist: [String: Any] = [
             "Label": project.agentLabel,
-            // A login shell is the only thing that resolves nvm and PATH; a
-            // GUI-spawned process inherits neither.
-            "ProgramArguments": ["/bin/zsh", "-lc", runner.command],
+            "ProgramArguments": [LoginShellPath.shell, "-ilc", runner.command],
             "WorkingDirectory": project.folder.path(percentEncoded: false),
             "StandardOutPath": paths.runnerLog(slug: project.slug).path(percentEncoded: false),
             "StandardErrorPath": paths.runnerLog(slug: project.slug).path(percentEncoded: false),
             "RunAtLoad": runner.autoStart,
             "ProcessType": "Interactive",
-            "EnvironmentVariables": [
-                "LOCA_SLUG": project.slug,
-                "PORT": String(project.port),
-            ],
+            "EnvironmentVariables": environment,
         ]
 
         // Restart on a crash, never on a clean exit — otherwise launchd fights
@@ -42,16 +47,21 @@ public enum LaunchAgentPlist {
         return plist
     }
 
-    public static func data(for project: Project, runner: Runner, paths: Paths) throws -> Data {
+    public static func data(
+        for project: Project, runner: Runner, paths: Paths, loginPath: String? = nil
+    ) throws -> Data {
         try PropertyListSerialization.data(
-            fromPropertyList: dictionary(for: project, runner: runner, paths: paths),
+            fromPropertyList: dictionary(
+                for: project, runner: runner, paths: paths, loginPath: loginPath),
             format: .xml,
             options: 0)
     }
 
     /// Convenience for the common case where the runner is the project's own.
-    public static func data(for project: Project, paths: Paths) throws -> Data {
+    public static func data(
+        for project: Project, paths: Paths, loginPath: String? = nil
+    ) throws -> Data {
         guard let runner = project.runner else { throw LaunchAgentPlistError.missingRunner }
-        return try data(for: project, runner: runner, paths: paths)
+        return try data(for: project, runner: runner, paths: paths, loginPath: loginPath)
     }
 }

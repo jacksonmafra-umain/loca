@@ -1,6 +1,19 @@
 import Foundation
 import Observation
 
+/// One line of a runner's log, with when the tailer saw it.
+///
+/// `arrived` is nil for everything read at open. launchd writes the server's
+/// output straight to the file and records no per-line time, so the only lines
+/// Loca can honestly date are the ones that reach it while it is watching.
+/// Inventing a time for the rest would make old output look current, which is
+/// the exact confusion timestamps are here to prevent.
+struct LogLine: Identifiable {
+    let id: Int
+    let text: String
+    let arrived: Date?
+}
+
 /// Follows a runner's log file.
 ///
 /// Opens at the end rather than the beginning: a dev server that has been up
@@ -13,9 +26,16 @@ import Observation
 @Observable
 final class LogTailer {
     /// The tail, newest last.
-    private(set) var lines: [String] = []
+    private(set) var lines: [LogLine] = []
     private(set) var isFollowing = false
     private(set) var missingFile = false
+
+    /// When the file was last written to, as the filesystem records it.
+    ///
+    /// The one date that covers the undated backlog: a log whose last write was
+    /// half an hour ago is not describing what just happened, however current
+    /// its last line reads.
+    private(set) var lastWrite: Date?
 
     /// How much of the end of the file to read on open.
     private let window = 64 * 1024
@@ -25,6 +45,9 @@ final class LogTailer {
     private var url: URL?
     private var handle: FileHandle?
     private var source: DispatchSourceFileSystemObject?
+    /// Monotonic across a clear, so SwiftUI never reuses a row's identity for a
+    /// different line.
+    private var nextID = 0
 
     func follow(_ url: URL) {
         guard self.url != url || !isFollowing else { return }
@@ -36,11 +59,13 @@ final class LogTailer {
             // A log file appears only once the runner has produced output, so
             // its absence is a normal state and not an error to shout about.
             lines = []
+            lastWrite = nil
             return
         }
 
         missingFile = false
         self.handle = handle
+        lastWrite = modificationDate(of: url)
         readInitialWindow(from: handle)
         watch(handle)
         isFollowing = true
@@ -55,11 +80,32 @@ final class LogTailer {
         isFollowing = false
     }
 
-    func clear() {
+    /// Empties the log file itself, not just the view.
+    ///
+    /// Clearing only what is on screen would be a lie the next open corrects:
+    /// the tail is read back from the file, so the output would return. The
+    /// file is truncated instead, and the tail restarted against it — launchd
+    /// holds the descriptor in append mode, so a running server keeps writing
+    /// from the new beginning rather than into a hole.
+    func clear() throws {
+        guard let url else {
+            lines = []
+            return
+        }
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: 0)
+
+        stop()
         lines = []
+        follow(url)
     }
 
     // MARK: - Reading
+
+    private func modificationDate(of url: URL) -> Date? {
+        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
 
     private func readInitialWindow(from handle: FileHandle) {
         let size = (try? handle.seekToEnd()) ?? 0
@@ -75,7 +121,7 @@ final class LogTailer {
             text = String(text[text.index(after: newline)...])
         }
 
-        append(text)
+        append(text, arrived: nil)
     }
 
     private func watch(_ handle: FileHandle) {
@@ -100,7 +146,7 @@ final class LogTailer {
 
             let data = (try? handle.readToEnd()) ?? Data()
             guard !data.isEmpty else { return }
-            self.append(String(decoding: data, as: UTF8.self))
+            self.append(String(decoding: data, as: UTF8.self), arrived: Date())
         }
 
         source.setCancelHandler { try? handle.close() }
@@ -108,10 +154,19 @@ final class LogTailer {
         self.source = source
     }
 
-    private func append(_ text: String) {
+    private func append(_ text: String, arrived: Date?) {
         guard !text.isEmpty else { return }
-        let incoming = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        lines.append(contentsOf: incoming.filter { !$0.isEmpty })
+        let incoming = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.isEmpty }
+        guard !incoming.isEmpty else { return }
+
+        for line in incoming {
+            lines.append(LogLine(id: nextID, text: String(line), arrived: arrived))
+            nextID += 1
+        }
+        if let arrived {
+            lastWrite = arrived
+        }
 
         if lines.count > maximumLines {
             lines.removeFirst(lines.count - maximumLines)
