@@ -14,6 +14,8 @@ struct ProjectDetailPane: View {
     @State private var runnerError: String?
     @State private var sharedFileError: String?
     @State private var logError: String?
+    /// The command being edited, or nil when the row is just showing it.
+    @State private var commandDraft: String?
     @State private var showingLog = true
 
     private let paths = Paths()
@@ -206,7 +208,7 @@ struct ProjectDetailPane: View {
                 }
 
                 if let runner = project.runner {
-                    detailRow("Command", runner.command, monospaced: true)
+                    commandRow(project, command: runner.command)
                     Toggle("Start at login", isOn: autoStartBinding(project))
                         .toggleStyle(.checkbox)
                         .tint(Theme.accent)
@@ -247,6 +249,95 @@ struct ProjectDetailPane: View {
                         .foregroundStyle(Theme.danger)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+        }
+    }
+
+    /// The command, editable in place.
+    ///
+    /// Behind an explicit Edit rather than a live field: this one string is what
+    /// launchd runs, and a stray keystroke in a field that saves as you type is
+    /// a dev server that stops working for a reason nothing on screen explains.
+    @ViewBuilder
+    private func commandRow(_ project: Project, command: String) -> some View {
+        if let draft = commandDraft {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 10) {
+                    Text("Command")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+                        .frame(width: 76, alignment: .leading)
+                    TextField(
+                        "",
+                        text: Binding(get: { draft }, set: { commandDraft = $0 })
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .onSubmit { saveCommand(project) }
+                }
+                HStack(spacing: 8) {
+                    Spacer().frame(width: 76)
+                    Button("Save") { saveCommand(project) }
+                        .buttonStyle(.accent)
+                        .disabled(
+                            draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button("Cancel") { commandDraft = nil }
+                        .buttonStyle(.quiet)
+                }
+                // It is written to the plist, and the plist is read at start.
+                if runners.status(for: project).isRunning {
+                    HStack(spacing: 6) {
+                        Spacer().frame(width: 70)
+                        Text("Saving restarts the server so the new command takes effect.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        } else {
+            HStack(alignment: .top, spacing: 10) {
+                Text("Command")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textTertiary)
+                    .frame(width: 76, alignment: .leading)
+                Text(command)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button("Edit") { commandDraft = command }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.accent)
+            }
+        }
+    }
+
+    private func saveCommand(_ project: Project) {
+        guard let draft = commandDraft?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !draft.isEmpty, draft != project.runner?.command
+        else {
+            commandDraft = nil
+            return
+        }
+
+        Task {
+            var changed = project
+            changed.runner?.command = draft
+            do {
+                try await store.update(changed)
+                commandDraft = nil
+                runnerError = nil
+                // The command lives in the plist, which launchd read at load,
+                // so a running server keeps the old one until the agent is
+                // reloaded.
+                if runners.status(for: changed).isRunning {
+                    try runners.start(changed)
+                }
+            } catch {
+                runnerError = error.localizedDescription
             }
         }
     }

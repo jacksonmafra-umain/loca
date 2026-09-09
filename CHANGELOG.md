@@ -27,6 +27,12 @@ breaking change to any of the three means a major version.
 - **Clear** on the log card empties the log file, not just the view. Clearing
   only what is on screen is a lie the next open corrects, since the tail is
   read back from the file.
+- A runner's command can be edited after the project is created. It was
+  write-once: the detail pane showed it as fixed text and there was no
+  command-line equivalent, so correcting a typo meant hand-editing the
+  project's `.loca.json` and adopting it back, or deleting the project and
+  adding it again. Saving while the server is running reloads the agent, so
+  the new command takes effect rather than waiting for the next login.
 
 ### Fixed
 
