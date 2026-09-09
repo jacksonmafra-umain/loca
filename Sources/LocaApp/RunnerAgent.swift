@@ -62,6 +62,12 @@ enum RunnerAgent {
             try stop(project)
         }
         try bootstrap(plist)
+
+        // `bootstrap` loads the label; whether it also *runs* it is up to
+        // RunAtLoad and KeepAlive, so a project with both off would come back
+        // loaded and idle from a button that says Start. Kickstart says run it
+        // — without `-k`, which would restart what bootstrap already started.
+        try run("kickstart", ["kickstart", serviceTarget(for: project)])
     }
 
     /// `bootout` tears down the whole process group.
